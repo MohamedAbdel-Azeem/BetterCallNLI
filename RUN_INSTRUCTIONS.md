@@ -96,8 +96,79 @@ Pre-trained adapter weights are also available in this repo at `results/models/q
 
 ---
 
+# Inference Notebook (`notebooks/inference.ipynb`)
+
+Runs the fine-tuned model on the test split, applies the playbook, validates evidence spans, and produces all Milestone 1 deliverables (predictions, RunTrace files, evaluation CSV).
+
+## Prerequisites
+
+- Kaggle Notebooks with **GPU T4 x2** accelerator enabled
+- The LoRA adapter (either from training above, or from `results/models/qwen3-4B-nli-lora-adapter/`)
+- `playbook.yaml` uploaded to Kaggle
+
+## Required Input Paths
+
+Before running, verify/update these paths in the notebook to match your Kaggle environment:
+
+| Variable | Default Path | Description |
+|----------|-------------|-------------|
+| `ADAPTER_PATH_OVERRIDE` | `/kaggle/input/models/harridy/qwen/tensorflow2/default/1/kaggle/working/qwen3-4B-nli-lora-adapter` | Folder containing `adapter_config.json` and `adapter_model.safetensors` |
+| `PLAYBOOK_PATH_OVERRIDE` | `/kaggle/input/datasets/harridy/extras/playbook.yaml` | The playbook YAML file |
+
+If you uploaded the adapter as a Kaggle Model or Dataset, update these paths to match your upload location.
+
+## Step 1: Install Dependencies & Download Dataset
+
+Open `notebooks/inference.ipynb` on Kaggle with GPU T4 x2 enabled. Run all cells from the top.
+
+```bash
+pip install -q json-repair unsloth
+```
+
+The dataset downloads automatically via `kagglehub` (same as training notebook). Data exploration and preprocessing cells re-run identically to produce the records needed for evaluation.
+
+## Step 2: Load Model with LoRA Adapter
+
+Continue running cells. The notebook will:
+
+1. Load base model `unsloth/qwen3-4b-instruct-2507-unsloth-bnb-4bit` in 4-bit on GPU 0.
+2. Read `adapter_config.json` from `ADAPTER_PATH_OVERRIDE` and manually attach LoRA weights.
+3. Optionally load a second model copy on GPU 1 (if 2 GPUs available) for parallel inference.
+
+## Step 3: Run Inference on Test Split
+
+Continue running cells. The inference loop:
+
+1. Iterates over all 123 test contracts.
+2. For each contract, runs all 17 hypotheses through the model.
+3. Parses JSON output with retry logic (up to 3 attempts per hypothesis).
+4. Saves progress to `/kaggle/working/outputs/checkpoint.json` after each contract — **if the session crashes, re-run this cell and it resumes from where it left off**.
+
+## Step 4: Evidence Validation & Playbook Application
+
+Continue running cells. These steps run automatically:
+
+1. **Evidence span validation** — checks quote integrity (predicted quote matches `contract[char_start:char_end]`) and canonical span overlap.
+2. **Playbook mapping** — loads `playbook.yaml` from `PLAYBOOK_PATH_OVERRIDE` and maps each `(hypothesis_id, label)` to deterministic `severity`, `action`, `criticality`, `status`, and `rationale` fields.
+
+## Step 5: Save Outputs
+
+Continue running the remaining cells. The notebook produces:
+
+| Output | Path |
+|--------|------|
+| Predictions JSON | `/kaggle/working/outputs/predictions.json` |
+| RunTrace files (one per contract) | `/kaggle/working/outputs/runtraces/runtrace_<contract_id>.json` |
+| Evaluation CSV | `/kaggle/working/outputs/evaluation_metrics.csv` |
+| All RunTraces zipped | `/kaggle/working/output_files.zip` |
+
+The evaluation CSV is aggregated from the RunTrace files and contains: `label_accuracy`, `groundedness`, `quote_integrity_pass_rate`, `avg_latency_ms`, `evaluation_timestamp`.
+
+---
+
 ## Notes
 
 - Do **not** remove the line `os.environ["CUDA_VISIBLE_DEVICES"] = "0"` — it is required.
 - The base model (`Qwen/Qwen3-4B-Instruct-2507`) and dataset splits are fixed across all milestones.
 - All random operations use `seed=42` for reproducibility.
+- If the inference session crashes, simply re-run the inference cell — checkpoint/resume handles it automatically.
