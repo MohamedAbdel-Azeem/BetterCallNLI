@@ -1,7 +1,9 @@
 # BetterCallNLI
 
 NDA document classification and review system that analyzes contracts using Natural Language Inference.
-
+## Notebook Links
+Model: https://www.kaggle.com/code/belalabdelazeem/qwen3-4b-unsloth
+Inference: https://www.kaggle.com/code/harridy/notebook8c78216aee
 ## Repository Structure
 
 ```
