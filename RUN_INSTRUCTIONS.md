@@ -106,16 +106,34 @@ Runs the fine-tuned model on the test split, applies the playbook, validates evi
 - The LoRA adapter (either from training above, or from `results/models/qwen3-4B-nli-lora-adapter/`)
 - `playbook.yaml` uploaded to Kaggle
 
-## Required Input Paths
+## Required Input Paths (must update before running)
 
-Before running, verify/update these paths in the notebook to match your Kaggle environment:
+These paths are hardcoded in the notebook. Update them to match your Kaggle upload locations:
 
-| Variable | Default Path | Description |
-|----------|-------------|-------------|
-| `ADAPTER_PATH_OVERRIDE` | `/kaggle/input/models/harridy/qwen/tensorflow2/default/1/kaggle/working/qwen3-4B-nli-lora-adapter` | Folder containing `adapter_config.json` and `adapter_model.safetensors` |
-| `PLAYBOOK_PATH_OVERRIDE` | `/kaggle/input/datasets/harridy/extras/playbook.yaml` | The playbook YAML file |
+| Variable (Cell) | Default Path | What to upload |
+|-----------------|-------------|----------------|
+| `ADAPTER_PATH_OVERRIDE` (Cell 19) | `/kaggle/input/models/harridy/qwen/tensorflow2/default/1/kaggle/working/qwen3-4B-nli-lora-adapter` | Folder with `adapter_config.json` + `adapter_model.safetensors` (from training, or from `results/models/qwen3-4B-nli-lora-adapter/`) |
+| `PLAYBOOK_PATH_OVERRIDE` (Cell 35) | `/kaggle/input/datasets/harridy/extras/playbook.yaml` | The `playbook.yaml` file from repo root |
 
-If you uploaded the adapter as a Kaggle Model or Dataset, update these paths to match your upload location.
+**Optional** (for RunTrace schema validation):
+
+| Path (Cell 41) | Default | What to upload |
+|-----------------|---------|----------------|
+| Schema file | `/kaggle/input/datasets/harridy/extras/runtrace_ms1.schema.json` | RunTrace JSON schema (skipped if not found) |
+
+## Generated Output Paths
+
+These are created automatically — no configuration needed:
+
+| Variable | Path | Contents |
+|----------|------|----------|
+| `PREPROCESSED_DIR` | `/kaggle/working/preprocessed/` | Preprocessed train/dev/test JSON splits |
+| `OUTPUT_DIR` | `/kaggle/working/outputs/` | Parent directory for all inference outputs |
+| `CHECKPOINT_FILE` | `/kaggle/working/outputs/checkpoint.json` | Inference progress checkpoint (for crash recovery) |
+| `PREDICTIONS_PATH` | `/kaggle/working/outputs/predictions.json` | All predictions with playbook fields |
+| `RUNTRACE_DIR` | `/kaggle/working/outputs/runtraces/` | One `runtrace_<contract_id>.json` per contract |
+| `EVAL_CSV_PATH` | `/kaggle/working/outputs/evaluation_metrics.csv` | Aggregated evaluation metrics |
+| Zip archive | `/kaggle/working/output_files.zip` | All RunTrace files zipped for download |
 
 ## Step 1: Install Dependencies & Download Dataset
 
