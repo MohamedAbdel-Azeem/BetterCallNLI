@@ -4,7 +4,7 @@
 
 - **Platform:** [Kaggle Notebooks](https://www.kaggle.com/) with **GPU T4 x2** accelerator enabled
 - **Accounts:** Kaggle account, Hugging Face account with a [read-access token](https://huggingface.co/settings/tokens)
-- **Time:** ~4.5 hours (training dominates)
+- **Time:** ~6 hours (training dominates)
 
 ---
 
