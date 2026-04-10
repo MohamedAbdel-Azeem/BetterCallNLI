@@ -128,6 +128,7 @@ These are created automatically — no configuration needed:
 | Variable | Path | Contents |
 |----------|------|----------|
 | `PREPROCESSED_DIR` | `/kaggle/working/preprocessed/` | Preprocessed train/dev/test JSON splits |
+| `OUTPUT_DIR` | `/kaggle/working/outputs/` | Parent directory for all inference outputs |
 | `CHECKPOINT_FILE` | `/kaggle/working/outputs/checkpoint.json` | Inference progress checkpoint (for crash recovery) |
 | `PREDICTIONS_PATH` | `/kaggle/working/outputs/predictions.json` | All predictions with playbook fields |
 | `RUNTRACE_DIR` | `/kaggle/working/outputs/runtraces/` | One `runtrace_<contract_id>.json` per contract |
