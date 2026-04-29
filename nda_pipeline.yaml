@@ -1,0 +1,163 @@
+pipeline:
+  name: "NDA Review Pipeline"
+  description: "Multi-agent retrieval-augmented contract analysis system"
+  metadata:
+    version: "1.0"
+    author: "BetterCallNLI"
+  
+  nodes:
+    - id: "input_data"
+      label: "Contract + User Prompt"
+      sublabel: "+ Conversation History"
+      shape: "stadium"
+      category: "entry"
+    
+    - id: "conv_agent"
+      label: "Conversation Agent"
+      sublabel: "Routes request, manages history"
+      shape: "rect"
+      category: "orchestration"
+    
+    - id: "router"
+      label: "Retrieval Router"
+      sublabel: "vector RAG or GraphRAG"
+      shape: "diamond"
+      category: "routing"
+    
+    - id: "vector_rag"
+      label: "Vector RAG Pipeline"
+      sublabel: "Embedding + cosine similarity"
+      shape: "rect"
+      category: "retrieval"
+    
+    - id: "graph_rag"
+      label: "GraphRAG Pipeline"
+      sublabel: "Knowledge graph retrieval"
+      shape: "rect"
+      category: "retrieval"
+    
+    - id: "chroma"
+      label: "Chroma"
+      sublabel: "Vector Database"
+      shape: "cylinder"
+      category: "database"
+    
+    - id: "neo4j"
+      label: "Neo4j"
+      sublabel: "Graph Database"
+      shape: "cylinder"
+      category: "database"
+    
+    - id: "retrieved_context"
+      label: "Retrieved Context"
+      shape: "rect"
+      category: "data_store"
+    
+    - id: "hypothesis_analyst"
+      label: "Hypothesis Analyst"
+      sublabel: "Answers one hypothesis"
+      shape: "rect"
+      category: "agent"
+    
+    - id: "reviewer_agent"
+      label: "Reviewer Agent"
+      sublabel: "Validates answer quality"
+      shape: "rect"
+      category: "agent"
+    
+    - id: "validated_outputs"
+      label: "17 Validated Verdicts + Evidence Spans"
+      shape: "rect"
+      category: "results"
+    
+    - id: "playbook_enrichment"
+      label: "Playbook Enrichment"
+      sublabel: "Policy context, risk flags, actions"
+      shape: "rect"
+      category: "enrichment"
+    
+    - id: "runtrace_formatter"
+      label: "Runtrace Formatter"
+      sublabel: "Structures all outputs per schema"
+      shape: "rect"
+      category: "formatting"
+    
+    - id: "final_output"
+      label: "Final NDA Review Output"
+      shape: "stadium"
+      category: "exit"
+
+  edges:
+    - from: "input_data"
+      to: "conv_agent"
+      label: "contract + prompt + history"
+    
+    - from: "conv_agent"
+      to: "router"
+      label: "parsed query + session context"
+    
+    - from: "router"
+      to: "vector_rag"
+      label: "query embedding"
+    
+    - from: "router"
+      to: "graph_rag"
+      label: "graph query"
+    
+    - from: "vector_rag"
+      to: "chroma"
+      bidirectional: true
+    
+    - from: "graph_rag"
+      to: "neo4j"
+      bidirectional: true
+    
+    - from: "vector_rag"
+      to: "retrieved_context"
+    
+    - from: "graph_rag"
+      to: "retrieved_context"
+    
+    - from: "retrieved_context"
+      to: "hypothesis_analyst"
+      label: "context + contract + hypothesis"
+    
+    - from: "hypothesis_analyst"
+      to: "reviewer_agent"
+      label: "verdict + evidence"
+    
+    - from: "reviewer_agent"
+      to: "hypothesis_analyst"
+      label: "Retry if rejected (max 3 tries)"
+      metadata:
+        style: "curved"
+        max_retries: 3
+    
+    - from: "reviewer_agent"
+      to: "validated_outputs"
+      label: "17 validated verdicts + evidence spans"
+    
+    - from: "validated_outputs"
+      to: "playbook_enrichment"
+      label: "verdicts + evidence spans"
+    
+    - from: "playbook_enrichment"
+      to: "runtrace_formatter"
+      label: "enriched verdicts + evidence spans"
+    
+    - from: "runtrace_formatter"
+      to: "final_output"
+      label: "structured JSON runtrace"
+
+  containers:
+    - id: "hypothesis_loop"
+      label: "For each hypothesis x17"
+      nodes: ["router", "vector_rag", "graph_rag", "chroma", "neo4j", "retrieved_context", "hypothesis_analyst", "reviewer_agent"]
+    
+    - id: "retrieval_sub_pipeline"
+      label: "Retrieval Pipeline"
+      nodes: ["vector_rag", "graph_rag", "chroma", "neo4j"]
+    
+    - id: "agentic_review_block"
+      label: "Agentic Review"
+      nodes: ["hypothesis_analyst", "reviewer_agent"]
