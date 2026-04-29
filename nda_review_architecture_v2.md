@@ -6,11 +6,11 @@ graph TD
     Start([Contract + user prompt<br/>+ conversation history])
     ConvAgent(Conversation agent<br/>Routes request, manages history)
     
-    subgraph Loop [For each hypothesis (x17)]
+    subgraph Loop ["For each hypothesis (x17)"]
         direction TB
         Router{Retrieval router<br/>CLI flag: vector RAG or GraphRAG}
         
-        subgraph Retrieval_Logic [Retrieval Pipeline]
+        subgraph Retrieval_Logic ["Retrieval Pipeline"]
             Vector[Vector RAG pipeline<br/>Embedding + cosine similarity]
             Graph[GraphRAG pipeline<br/>Knowledge graph retrieval]
             Chroma[(Chroma<br/>vector DB)]
@@ -21,7 +21,7 @@ graph TD
             Graph --- Neo4j
         end
         
-        subgraph Agent_Logic [Agentic Review]
+        subgraph Agent_Logic ["Agentic Review"]
             Analyst[Hypothesis analyst<br/>Answers one hypothesis]
             Reviewer[Reviewer agent<br/>Validates answer quality]
             
