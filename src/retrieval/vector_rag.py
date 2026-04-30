@@ -82,6 +82,7 @@ class VectorRAGRetriever(BaseRetriever):
         query: str,
         hypothesis_id: Optional[str] = None,
         k: int = 5,
+        contract: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Retrieve relevant NDA precedents for a free-form query string.

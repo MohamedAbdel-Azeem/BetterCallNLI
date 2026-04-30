@@ -92,7 +92,7 @@ class ConversationAgent:
         contract_id = contract.get("id", "user-provided")
 
         # 1. Retrieve external context (training corpus precedents)
-        precedents = self.retriever.retrieve(user_prompt, k=_MAX_PRECEDENTS)
+        precedents = self.retriever.retrieve(user_prompt, k=_MAX_PRECEDENTS, contract=contract)
 
         # 2. Build the full messages list for the chat API
         #    System message carries the contract (sent once, not repeated in history)

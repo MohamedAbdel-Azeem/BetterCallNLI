@@ -9,6 +9,7 @@ class BaseRetriever(ABC):
         query: str,
         hypothesis_id: Optional[str] = None,
         k: int = 5,
+        contract: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Retrieve relevant precedents from the training corpus."""
 
