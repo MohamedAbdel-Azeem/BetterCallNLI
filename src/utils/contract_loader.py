@@ -33,8 +33,8 @@ def load_contractnli(
 
     try:
         import kagglehub
-        path = kagglehub.dataset_download("alisadeghian77/contract-nli-json")
-        fpath = Path(path) / f"{split}.json"
+        path = kagglehub.dataset_download("seiftarek158/contract-nli")
+        fpath = Path(path) / "contract-nli" / f"{split}.json"
         return json.loads(fpath.read_text(encoding="utf-8"))
     except Exception as exc:
         raise RuntimeError(
