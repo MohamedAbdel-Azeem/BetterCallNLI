@@ -43,7 +43,7 @@ from .hypothesis_pipeline import HypothesisPipeline  # stub until Tasks 2+3
 from .intent_router import IntentRouter
 
 # ── default model (matches the rest of the codebase) ─────────────────────────
-DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+DEFAULT_MODEL = "Qwen/Qwen3-8B"
 
 
 class Orchestrator:
