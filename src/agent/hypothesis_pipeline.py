@@ -21,7 +21,7 @@ import yaml
 from ..retrieval.base import BaseRetriever
 from .hypothesis_analyst import HypothesisAnalyst
 
-DEFAULT_MODEL = "Qwen/Qwen3-8B"
+DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 
 # ── ReviewerAgent — real or stub ──────────────────────────────────────────────
 

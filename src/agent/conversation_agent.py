@@ -23,7 +23,7 @@ from .history import ConversationHistory
 
 # Default model — stays in the Qwen family used in Milestone 1.
 # Any HF model that supports the chat_completion endpoint works here.
-DEFAULT_MODEL = "Qwen/Qwen3-8B"
+DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 
 _SYSTEM_TEMPLATE = """\
 You are an expert legal NDA analyst.  Your task is to answer questions about \
