@@ -147,7 +147,30 @@ After running `--mode evaluate` end-to-end you should have:
 
 ---
 
-## 5. Troubleshooting
+## 5. Running on Kaggle (no fine-tune)
+
+Per §2f the fine-tuned model is NOT used. All LLM calls hit HuggingFace Serverless and retrieval hits ChromaDB Cloud / Neo4j Aura — they're all network services, so Kaggle is just a remote CPU runner with reliable uptime. Use it when you want to launch the full ~hour-plus evaluation and walk away.
+
+### Steps
+
+1. **Upload the repo as a Kaggle Dataset.** Zip the project root and add it to the notebook's *Add data* panel. The default expected mount path is `/kaggle/input/bettercallnli/BetterCallNLI` (update `REPO_DIR` in Cell 2 if yours differs).
+2. **Add Kaggle Secrets** under *Add-ons → Secrets*:
+   - `HF_TOKEN` (always required)
+   - `CHROMA_API_KEY` (required for `RETRIEVAL_MODE = "vector"`)
+   - `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` (required for `RETRIEVAL_MODE = "graphrag"`)
+3. **Open** [`notebooks/run_ms3_kaggle.ipynb`](./notebooks/run_ms3_kaggle.ipynb). Accelerator can stay on **None / CPU** — no model is loaded locally.
+4. **Run all cells.** Outputs land in `/kaggle/working/outputs/ms3/` with the same files as the local CLI eval, including `runtraces_ms3.zip` (§5c) and `evaluation_metrics_combined.csv` (§5b).
+5. **Download** the artifacts via Kaggle's *Output* tab.
+
+The Kaggle notebook is a thin wrapper around `scripts.evaluate_ms3.run_evaluation` — the same code the local CLI calls — so results are identical between the two environments.
+
+### Integrating Member 4's runtrace work
+
+When [`src/enrichment/playbook_enricher.py`](./src/enrichment/playbook_enricher.py) and [`src/utils/runtrace.py`](./src/utils/runtrace.py) are merged into this branch, [scripts/evaluate_ms3.py](./scripts/evaluate_ms3.py) **automatically routes through them** via the soft-import block at the top of the file. The runner prefers `PlaybookEnricher.enrich()` and `RuntraceFormatter.build_contract_runtrace()` when importable and falls back to the local shims if either fails. Both the local CLI and the Kaggle notebook pick this up with no code change after the merge.
+
+---
+
+## 6. Troubleshooting
 
 | Problem | Fix |
 |---|---|

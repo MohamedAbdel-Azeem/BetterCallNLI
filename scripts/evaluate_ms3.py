@@ -37,6 +37,27 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
+# ── Task 4 modules: prefer them when available, fall back to local shims ─────
+# These are owned by Member 4 (playbook enrichment + schema-compliant runtrace
+# formatter). When their PR merges into this branch the imports succeed and the
+# runner automatically routes through their implementations. Until then, the
+# local apply_playbook() / write_runtrace() defined below are used.
+
+try:
+    from src.enrichment.playbook_enricher import PlaybookEnricher  # type: ignore
+    _HAS_TASK4_ENRICHER = True
+except Exception:
+    PlaybookEnricher = None  # type: ignore[assignment]
+    _HAS_TASK4_ENRICHER = False
+
+try:
+    from src.utils.runtrace import RuntraceFormatter  # type: ignore
+    _HAS_TASK4_FORMATTER = True
+except Exception:
+    RuntraceFormatter = None  # type: ignore[assignment]
+    _HAS_TASK4_FORMATTER = False
+
+
 # ── ContractNLI hypothesis-id mapping (matches src/retrieval/vector_rag.py) ────
 H_TO_NDA: Dict[str, str] = {
     "H01": "nda-1",  "H02": "nda-2",  "H03": "nda-3",
@@ -398,6 +419,23 @@ def run_evaluation(
 
     playbook = load_playbook(playbook_path) if playbook_path else {}
 
+    # Task 4 hot-swap: prefer Member 4's enricher / formatter when importable
+    task4_enricher = None
+    if _HAS_TASK4_ENRICHER and playbook_path is not None:
+        try:
+            task4_enricher = PlaybookEnricher(str(playbook_path))  # type: ignore[misc]
+            print(f"[evaluate_ms3] using Task 4 PlaybookEnricher", file=sys.stderr)
+        except Exception as exc:
+            print(f"[evaluate_ms3] Task 4 PlaybookEnricher init failed ({exc}); using local shim", file=sys.stderr)
+
+    task4_formatter = None
+    if _HAS_TASK4_FORMATTER:
+        try:
+            task4_formatter = RuntraceFormatter()  # type: ignore[misc]
+            print(f"[evaluate_ms3] using Task 4 RuntraceFormatter", file=sys.stderr)
+        except Exception as exc:
+            print(f"[evaluate_ms3] Task 4 RuntraceFormatter init failed ({exc}); using local shim", file=sys.stderr)
+
     selected = contracts[: limit] if limit else contracts
     total = len(selected)
 
@@ -433,8 +471,19 @@ def run_evaluation(
         agent_traces: List[Dict[str, Any]] = pipeline_result.get("agent_traces", [])
         tool_calls:   List[Dict[str, Any]] = pipeline_result.get("tool_calls", [])
 
-        # §3c: enrich every verdict with deterministic playbook policy fields
-        verdicts = [apply_playbook(v, playbook) for v in raw_verdicts] if playbook else raw_verdicts
+        # §3c: enrich every verdict with deterministic playbook policy fields.
+        # Prefer Task 4's PlaybookEnricher.enrich() when available; otherwise
+        # use the local apply_playbook() shim defined in this file.
+        if task4_enricher is not None:
+            try:
+                verdicts = task4_enricher.enrich(raw_verdicts)
+            except Exception as exc:
+                print(f"[evaluate_ms3] Task 4 enrich() failed ({exc}); falling back to local shim", file=sys.stderr)
+                verdicts = [apply_playbook(v, playbook) for v in raw_verdicts] if playbook else raw_verdicts
+        elif playbook:
+            verdicts = [apply_playbook(v, playbook) for v in raw_verdicts]
+        else:
+            verdicts = raw_verdicts
 
         for v in verdicts:
             h_id = v.get("hypothesis_id", "?")
@@ -459,15 +508,36 @@ def run_evaluation(
             for t in agent_traces
         ]
 
-        write_runtrace(
-            contract_id=c_id,
-            contract_text=contract.get("text", ""),
-            agent_traces=normalized_traces,
-            tool_calls=normalized_tcs,
-            verdicts=verdicts,
-            retrieval_mode=retrieval_mode,
-            path=runtrace_dir / f"runtrace_{c_id}.json",
-        )
+        # Prefer Task 4's RuntraceFormatter.build_contract_runtrace() when
+        # available; otherwise emit the local draft format.
+        runtrace_path = runtrace_dir / f"runtrace_{c_id}.json"
+        wrote_via_task4 = False
+        if task4_formatter is not None:
+            try:
+                payload = task4_formatter.build_contract_runtrace(  # type: ignore[union-attr]
+                    contract_id=c_id,
+                    agent_traces=normalized_traces,
+                    enriched_verdicts=verdicts,
+                    retrieval_mode=retrieval_mode,
+                )
+                runtrace_path.write_text(
+                    json.dumps(payload, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                wrote_via_task4 = True
+            except Exception as exc:
+                print(f"[evaluate_ms3] Task 4 build_contract_runtrace() failed ({exc}); falling back to local shim", file=sys.stderr)
+
+        if not wrote_via_task4:
+            write_runtrace(
+                contract_id=c_id,
+                contract_text=contract.get("text", ""),
+                agent_traces=normalized_traces,
+                tool_calls=normalized_tcs,
+                verdicts=verdicts,
+                retrieval_mode=retrieval_mode,
+                path=runtrace_path,
+            )
 
         if progress_cb:
             progress_cb(i, total, c_id, status="ok", latency_ms=latency_ms)
