@@ -232,15 +232,39 @@ def run_converse(args: argparse.Namespace) -> int:
     if args.save_history:
         con.print(f"[{OK_STYLE}]✓[/] history saved to {args.save_history}")
 
-    # §2c: write the per-session conversation runtrace
-    _write_conversation_runtrace(
-        session_id=history.session_id,
-        contract=contract,
-        retrieval_mode=args.retrieval,
-        turns=session_turns,
-        output_path=Path(args.session_runtrace) if args.session_runtrace
-                    else Path("results/ms3/conversation_runtraces") / f"session_{history.session_id}.json",
+    # §2c: write the per-session conversation runtrace.
+    # Prefer the orchestrator's RuntraceFormatter-backed builder (schema-compliant);
+    # fall back to the local draft writer if the orchestrator doesn't expose it.
+    session_runtrace_path = (
+        Path(args.session_runtrace) if args.session_runtrace
+        else Path("results/ms3/conversation_runtraces") / f"session_{history.session_id}.json"
     )
+    wrote_session_runtrace = False
+    if hasattr(orchestrator, "build_session_runtrace") and len(history) > 0:
+        try:
+            payload = orchestrator.build_session_runtrace(contract=contract, history=history)
+            session_runtrace_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                from src.utils.runtrace import RuntraceFormatter  # type: ignore
+                RuntraceFormatter.save(payload, str(session_runtrace_path))
+            except Exception:
+                session_runtrace_path.write_text(
+                    json.dumps(payload, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            con.print(f"[{OK_STYLE}]✓[/] session runtrace written to [bold]{session_runtrace_path}[/]")
+            wrote_session_runtrace = True
+        except Exception as exc:
+            con.print(f"[{WARN_STYLE}]![/] orchestrator session runtrace failed ({exc}); using local fallback")
+
+    if not wrote_session_runtrace:
+        _write_conversation_runtrace(
+            session_id=history.session_id,
+            contract=contract,
+            retrieval_mode=args.retrieval,
+            turns=session_turns,
+            output_path=session_runtrace_path,
+        )
 
     return 0
 
@@ -322,15 +346,20 @@ def run_analyze(args: argparse.Namespace) -> int:
 
     raw_verdicts = result.get("verdicts", []) or []
 
-    # §3c: deterministic playbook enrichment
-    sys.path.insert(0, str(Path(__file__).parent / "scripts"))
-    from scripts.evaluate_ms3 import apply_playbook, load_playbook  # type: ignore
-    try:
-        playbook = load_playbook(Path(args.playbook))
-        verdicts = [apply_playbook(v, playbook) for v in raw_verdicts]
-    except Exception as exc:
-        con.print(f"[{WARN_STYLE}]![/] playbook enrichment skipped: {exc}")
-        verdicts = raw_verdicts
+    # §3c: prefer the orchestrator's enriched_verdicts (PlaybookEnricher output).
+    # Fall back to the local apply_playbook shim if the orchestrator didn't emit them.
+    enriched_from_orch = result.get("enriched_verdicts")
+    if enriched_from_orch:
+        verdicts = enriched_from_orch
+    else:
+        sys.path.insert(0, str(Path(__file__).parent / "scripts"))
+        from scripts.evaluate_ms3 import apply_playbook, load_playbook  # type: ignore
+        try:
+            playbook = load_playbook(Path(args.playbook))
+            verdicts = [apply_playbook(v, playbook) for v in raw_verdicts]
+        except Exception as exc:
+            con.print(f"[{WARN_STYLE}]![/] playbook enrichment skipped: {exc}")
+            verdicts = raw_verdicts
 
     con.print(f"[{OK_STYLE}]✓[/] analysis complete in {elapsed:.1f}s · {len(verdicts)} verdicts")
 
@@ -344,17 +373,17 @@ def run_analyze(args: argparse.Namespace) -> int:
         render_tool_calls(result["tool_calls"])
 
     if args.output:
+        payload = {
+            "contract_id": contract["id"],
+            "mode":        result.get("mode"),
+            "verdicts":    verdicts,
+            "tool_calls":  result.get("tool_calls", []),
+        }
+        # If the orchestrator built a schema-compliant runtrace, include it
+        if result.get("runtrace"):
+            payload["runtrace"] = result["runtrace"]
         Path(args.output).write_text(
-            json.dumps(
-                {
-                    "contract_id": contract["id"],
-                    "mode":        result.get("mode"),
-                    "verdicts":    verdicts,
-                    "tool_calls":  result.get("tool_calls", []),
-                },
-                indent=2,
-                ensure_ascii=False,
-            ),
+            json.dumps(payload, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
         con.print(f"[{OK_STYLE}]✓[/] result written to {args.output}")

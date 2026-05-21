@@ -419,22 +419,27 @@ def run_evaluation(
 
     playbook = load_playbook(playbook_path) if playbook_path else {}
 
-    # Task 4 hot-swap: prefer Member 4's enricher / formatter when importable
+    # Task 4 is wired directly into the Orchestrator on the merged branch:
+    # `orchestrator.run(contract, "analyze this contract", history)` returns a
+    # result dict that already contains `enriched_verdicts` (PlaybookEnricher
+    # output) and `runtrace` (schema-compliant RuntraceFormatter output) when
+    # the intent routes to hypothesis_analysis. We use those directly and only
+    # fall back to local shims if the orchestrator didn't produce them
+    # (e.g. older orchestrator without Task 4 wiring).
+    has_task4_via_orchestrator = (
+        hasattr(orchestrator, "enricher") and hasattr(orchestrator, "formatter")
+    )
+    if has_task4_via_orchestrator:
+        print("[evaluate_ms3] using orchestrator's Task 4 wiring (enrichment + runtrace)", file=sys.stderr)
+
+    # Fallback local instances (only constructed if needed for older orchestrators)
     task4_enricher = None
-    if _HAS_TASK4_ENRICHER and playbook_path is not None:
+    if _HAS_TASK4_ENRICHER and playbook_path is not None and not has_task4_via_orchestrator:
         try:
             task4_enricher = PlaybookEnricher(str(playbook_path))  # type: ignore[misc]
-            print(f"[evaluate_ms3] using Task 4 PlaybookEnricher", file=sys.stderr)
+            print("[evaluate_ms3] using standalone Task 4 PlaybookEnricher", file=sys.stderr)
         except Exception as exc:
             print(f"[evaluate_ms3] Task 4 PlaybookEnricher init failed ({exc}); using local shim", file=sys.stderr)
-
-    task4_formatter = None
-    if _HAS_TASK4_FORMATTER:
-        try:
-            task4_formatter = RuntraceFormatter()  # type: ignore[misc]
-            print(f"[evaluate_ms3] using Task 4 RuntraceFormatter", file=sys.stderr)
-        except Exception as exc:
-            print(f"[evaluate_ms3] Task 4 RuntraceFormatter init failed ({exc}); using local shim", file=sys.stderr)
 
     selected = contracts[: limit] if limit else contracts
     total = len(selected)
@@ -445,6 +450,10 @@ def run_evaluation(
     skipped: List[str] = []
 
     retrieval_mode = getattr(orchestrator.retriever, "mode", "unknown")
+
+    # Lazy import — ConversationHistory only needed when going through orchestrator.run
+    if has_task4_via_orchestrator:
+        from src.agent.history import ConversationHistory  # type: ignore
 
     for i, contract in enumerate(selected, 1):
         c_id = contract.get("id", f"contract-{i}")
@@ -457,7 +466,21 @@ def run_evaluation(
 
         t_start = time.perf_counter()
         try:
-            pipeline_result = orchestrator.hypothesis_pipeline.run(contract)
+            if has_task4_via_orchestrator:
+                # Drive the full agentic pipeline through the orchestrator so
+                # PlaybookEnricher + RuntraceFormatter run automatically. The
+                # IntentRouter sees "analyze this contract" and hits the
+                # keyword fast-path (no LLM call), so this costs zero extra.
+                if hasattr(orchestrator, "reset_session"):
+                    orchestrator.reset_session()
+                result = orchestrator.run(
+                    contract     = contract,
+                    user_message = "analyze this contract",
+                    history      = ConversationHistory(),
+                )
+            else:
+                # Older orchestrator without Task 4 wiring — call pipeline directly
+                result = orchestrator.hypothesis_pipeline.run(contract)
         except Exception as exc:
             print(f"[evaluate_ms3] contract {c_id} failed: {exc}", file=sys.stderr)
             skipped.append(c_id)
@@ -467,14 +490,19 @@ def run_evaluation(
         latency_ms = round((time.perf_counter() - t_start) * 1000, 2)
         latencies.append(latency_ms)
 
-        raw_verdicts: List[Dict[str, Any]] = pipeline_result.get("verdicts", [])
-        agent_traces: List[Dict[str, Any]] = pipeline_result.get("agent_traces", [])
-        tool_calls:   List[Dict[str, Any]] = pipeline_result.get("tool_calls", [])
+        raw_verdicts: List[Dict[str, Any]] = result.get("verdicts", [])
+        agent_traces: List[Dict[str, Any]] = result.get("agent_traces", [])
+        tool_calls:   List[Dict[str, Any]] = result.get("tool_calls", [])
 
         # §3c: enrich every verdict with deterministic playbook policy fields.
-        # Prefer Task 4's PlaybookEnricher.enrich() when available; otherwise
-        # use the local apply_playbook() shim defined in this file.
-        if task4_enricher is not None:
+        # Priority:
+        #   1. result["enriched_verdicts"] from orchestrator's PlaybookEnricher (preferred)
+        #   2. standalone task4_enricher.enrich() (if orchestrator didn't wire it)
+        #   3. local apply_playbook() shim (last resort)
+        enriched_from_orchestrator = result.get("enriched_verdicts")
+        if enriched_from_orchestrator:
+            verdicts = enriched_from_orchestrator
+        elif task4_enricher is not None:
             try:
                 verdicts = task4_enricher.enrich(raw_verdicts)
             except Exception as exc:
@@ -501,34 +529,27 @@ def run_evaluation(
             "verdicts":     verdicts,
         })
 
-        # §2h: every tool_call must have name, args, output, count
-        normalized_tcs = normalize_tool_calls(tool_calls)
-        normalized_traces = [
-            {**t, "tool_calls": normalize_tool_calls(t.get("tool_calls", []))}
-            for t in agent_traces
-        ]
-
-        # Prefer Task 4's RuntraceFormatter.build_contract_runtrace() when
-        # available; otherwise emit the local draft format.
+        # §2c + §2h: write the schema-compliant runtrace.
+        # Priority:
+        #   1. result["runtrace"] — schema-compliant payload from RuntraceFormatter
+        #   2. local write_runtrace() draft (only when orchestrator didn't emit one)
         runtrace_path = runtrace_dir / f"runtrace_{c_id}.json"
-        wrote_via_task4 = False
-        if task4_formatter is not None:
+        runtrace_payload = result.get("runtrace")
+        if runtrace_payload and _HAS_TASK4_FORMATTER:
             try:
-                payload = task4_formatter.build_contract_runtrace(  # type: ignore[union-attr]
-                    contract_id=c_id,
-                    agent_traces=normalized_traces,
-                    enriched_verdicts=verdicts,
-                    retrieval_mode=retrieval_mode,
-                )
-                runtrace_path.write_text(
-                    json.dumps(payload, indent=2, ensure_ascii=False),
-                    encoding="utf-8",
-                )
-                wrote_via_task4 = True
+                RuntraceFormatter.save(runtrace_payload, str(runtrace_path))  # type: ignore[union-attr]
             except Exception as exc:
-                print(f"[evaluate_ms3] Task 4 build_contract_runtrace() failed ({exc}); falling back to local shim", file=sys.stderr)
-
-        if not wrote_via_task4:
+                print(f"[evaluate_ms3] RuntraceFormatter.save failed ({exc}); falling back to direct JSON write", file=sys.stderr)
+                runtrace_path.write_text(json.dumps(runtrace_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        elif runtrace_payload:
+            runtrace_path.write_text(json.dumps(runtrace_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        else:
+            # §2h: every tool_call must have name, args, output, count
+            normalized_tcs = normalize_tool_calls(tool_calls)
+            normalized_traces = [
+                {**t, "tool_calls": normalize_tool_calls(t.get("tool_calls", []))}
+                for t in agent_traces
+            ]
             write_runtrace(
                 contract_id=c_id,
                 contract_text=contract.get("text", ""),
