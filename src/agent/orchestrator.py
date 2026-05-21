@@ -32,13 +32,21 @@ the `tool_calls` list to the result dict so Task 4 has everything it needs.
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
+from ..enrichment import PlaybookEnricher
 from ..retrieval.base import BaseRetriever
+from ..utils.runtrace import RuntraceFormatter
 from .conversation_agent import ConversationAgent
 from .history import ConversationHistory
 from .hypothesis_pipeline import HypothesisPipeline  # stub until Tasks 2+3
 from .intent_router import IntentRouter
+
+
+def _utc_now_iso() -> str:
+    """ISO-8601 UTC timestamp, formatter-compatible."""
+    return datetime.now(timezone.utc).isoformat()
 
 # ── default model (matches the rest of the codebase) ─────────────────────────
 DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
@@ -82,6 +90,19 @@ class Orchestrator:
             playbook_path=playbook_path,
         )
 
+        # ── Task 4 wiring: playbook enrichment + runtrace formatter ───────────
+        # Additive only — these are consulted AFTER the pipeline runs to apply
+        # the (unmodified) playbook and emit a schema-compliant runtrace dict
+        # on every contract-mode call. Conversation-mode session runtraces are
+        # built on demand via build_session_runtrace().
+        self.enricher  = PlaybookEnricher(playbook_path=playbook_path)
+        self.formatter = RuntraceFormatter(playbook_path=playbook_path, model=model)
+
+        # Per-turn router calls accumulated for conversation-mode sessions.
+        # The caller (CLI) is free to reset this between sessions.
+        self._session_router_calls: List[Dict[str, Any]] = []
+        self._session_started_at: Optional[str] = None
+
     # ── public API ────────────────────────────────────────────────────────────
 
     def run(
@@ -117,9 +138,16 @@ class Orchestrator:
                 "verdicts"      : List[Dict]   (H01–H17)
                 "agent_traces"  : List[Dict]
         """
+        started_at = _utc_now_iso()
+        if self._session_started_at is None:
+            self._session_started_at = started_at
+
         # 1. Route the message
         intent, router_tool_call = self.router.route(user_message)
         tool_calls: List[Dict] = [router_tool_call]
+
+        # Track this router call for session-runtrace assembly later.
+        self._session_router_calls.append(router_tool_call)
 
         # 2. Dispatch to the appropriate agent
         if intent == "conversation":
@@ -127,9 +155,33 @@ class Orchestrator:
         else:
             result = self._run_hypothesis_analysis(contract)
 
-        # 3. Attach routing metadata to the result
+        # 3. Attach routing metadata to the result (existing behaviour)
         result["mode"] = intent
         result["tool_calls"] = tool_calls + result.pop("_agent_tool_calls", [])
+
+        # 4. Task 4 wiring — enrich + emit runtrace for hypothesis-mode calls.
+        #    Conversation mode runtraces are built on demand at session end via
+        #    build_session_runtrace(); they need the full turn history.
+        ended_at = _utc_now_iso()
+        if intent == "hypothesis_analysis":
+            try:
+                verdicts = result.get("verdicts", [])
+                enriched = self.enricher.enrich(verdicts)
+                result["enriched_verdicts"] = enriched
+                result["runtrace"] = self.formatter.build_contract_runtrace(
+                    contract           = contract,
+                    intent_router_call = router_tool_call,
+                    agent_traces       = result.get("agent_traces", []),
+                    enriched_verdicts  = enriched,
+                    retrieval_mode     = getattr(self.retriever, "mode", "graphrag"),
+                    started_at         = started_at,
+                    ended_at           = ended_at,
+                    model              = self.model,
+                )
+            except Exception as exc:                                            # pragma: no cover
+                # Never let runtrace/enrichment failure break the pipeline.
+                # Surface the error in the result dict so the caller can react.
+                result["runtrace_error"] = f"{type(exc).__name__}: {exc}"
 
         return result
 
@@ -166,6 +218,70 @@ class Orchestrator:
         pipeline_result = self.hypothesis_pipeline.run(contract)
         pipeline_result["_agent_tool_calls"] = pipeline_result.pop("tool_calls", [])
         return pipeline_result
+
+    # ── conversation-session runtrace helpers (Task 4) ────────────────────────
+
+    def build_session_runtrace(
+        self,
+        contract: Dict[str, Any],
+        history:  ConversationHistory,
+        ended_at: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Build one schema-compliant conversation-mode runtrace covering the
+        entire current session. Intended to be called by the CLI (or any
+        front-end) when the user ends the conversation.
+
+        Reads turns directly from `history` and pairs them with the
+        intent-router calls accumulated by `run()` during the session.
+        ConversationAgent tool_calls are reconstructed by the formatter
+        from the per-turn `evidence`/`precedents`/`assistant` data already
+        stored in history — no changes to ConversationAgent or History.
+
+        Args:
+            contract : the contract dict the session is anchored to.
+            history  : the ConversationHistory tracked across all turns.
+            ended_at : optional ISO-8601 UTC end timestamp. Defaults to now.
+
+        Returns:
+            A schema-compliant MS3 conversation-mode runtrace dict.
+        """
+        started_at = self._session_started_at or _utc_now_iso()
+        ended_at   = ended_at or _utc_now_iso()
+
+        turn_records: List[Dict[str, Any]] = []
+        for idx, turn in enumerate(history.turns, start=1):
+            router_call = (
+                self._session_router_calls[idx - 1]
+                if idx - 1 < len(self._session_router_calls)
+                else {}
+            )
+            turn_records.append({
+                "turn_id":            turn.get("turn_id", idx),
+                "timestamp":          turn.get("timestamp"),
+                "user_prompt":        turn.get("user", ""),
+                "assistant_response": turn.get("assistant", ""),
+                "evidence":           turn.get("evidence", []) or [],
+                "precedents":         turn.get("precedents", []) or [],
+                "retrieval_mode":     turn.get("retrieval_mode", getattr(self.retriever, "mode", "graphrag")),
+                "intent_router_call": router_call,
+            })
+
+        return self.formatter.build_conversation_runtrace(
+            contract        = contract,
+            session_id      = history.session_id,
+            turn_records    = turn_records,
+            retrieval_mode  = getattr(self.retriever, "mode", "graphrag"),
+            started_at      = started_at,
+            ended_at        = ended_at,
+            model           = self.model,
+            created_at      = getattr(history, "created_at", None),
+        )
+
+    def reset_session(self) -> None:
+        """Clear accumulated per-turn router calls. Call between sessions."""
+        self._session_router_calls = []
+        self._session_started_at   = None
 
 
 # ── convenience factory ────────────────────────────────────────────────────────
