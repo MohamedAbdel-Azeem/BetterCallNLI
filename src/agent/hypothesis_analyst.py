@@ -15,8 +15,6 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from huggingface_hub import InferenceClient
-
 from ..retrieval.base import BaseRetriever
 
 DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
@@ -95,20 +93,30 @@ class HypothesisAnalyst:
     Evaluates one hypothesis per call against a contract.
 
     Args:
-        retriever : initialised BaseRetriever (vector or graphrag).
-        hf_token  : HuggingFace API token.
-        model     : HF model string; must be from the Qwen3 family.
+        retriever  : initialised BaseRetriever (vector or graphrag).
+        hf_token   : HuggingFace API token (ignored when use_local=True).
+        model      : HF model string.
+        use_local  : if True, load the model locally via transformers instead
+                     of calling the HuggingFace Serverless Inference API.
     """
 
     def __init__(
         self,
         retriever: BaseRetriever,
-        hf_token: str,
+        hf_token: str = "",
         model: str = DEFAULT_MODEL,
+        use_local: bool = False,
     ) -> None:
         self.retriever = retriever
         self.model = model
-        self._client = InferenceClient(model=model, token=hf_token)
+        self._use_local = use_local
+        self._local_pipe = None  # lazy-loaded on first local call
+
+        if not use_local:
+            from huggingface_hub import InferenceClient
+            self._client = InferenceClient(model=model, token=hf_token)
+        else:
+            self._client = None
 
     # ── public API ────────────────────────────────────────────────────────────
 
@@ -225,6 +233,11 @@ class HypothesisAnalyst:
     # ── private: LLM call ─────────────────────────────────────────────────────
 
     def _llm_call(self, messages: List[Dict[str, str]]) -> str:
+        if self._use_local:
+            return self._llm_call_local(messages)
+        return self._llm_call_api(messages)
+
+    def _llm_call_api(self, messages: List[Dict[str, str]]) -> str:
         try:
             response = self._client.chat_completion(
                 messages=messages,
@@ -233,7 +246,40 @@ class HypothesisAnalyst:
             )
             return response.choices[0].message.content or ""
         except Exception as exc:
-            print(f"[HypothesisAnalyst] LLM call failed: {exc}")
+            print(f"[HypothesisAnalyst] API call failed: {exc}")
+            return ""
+
+    def _llm_call_local(self, messages: List[Dict[str, str]]) -> str:
+        try:
+            from transformers import pipeline as hf_pipeline
+        except ImportError:
+            raise ImportError(
+                "transformers is required for local inference: "
+                "pip install transformers torch accelerate"
+            )
+
+        if self._local_pipe is None:
+            self._local_pipe = hf_pipeline(
+                "text-generation",
+                model=self.model,
+                device_map="auto",
+                torch_dtype="auto",
+            )
+
+        try:
+            output = self._local_pipe(
+                messages,
+                max_new_tokens=_MAX_TOKENS,
+                temperature=0.1,
+                do_sample=True,
+            )
+            generated = output[0]["generated_text"]
+            # pipeline returns the full message list; last entry is the assistant reply
+            if isinstance(generated, list):
+                return generated[-1].get("content", "")
+            return str(generated)
+        except Exception as exc:
+            print(f"[HypothesisAnalyst] Local LLM call failed: {exc}")
             return ""
 
     # ── private: response parsing ─────────────────────────────────────────────
