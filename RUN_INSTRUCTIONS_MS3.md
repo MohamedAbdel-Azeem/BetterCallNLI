@@ -181,6 +181,34 @@ For evaluation runs that hit the LLM ~6 000+ times (123 contracts × 17 hypothes
 
 After step 2, every agent that calls `self._client.chat_completion(...)` runs against the GPU model. No agent code changes; the agents don't know they're not talking to HF Serverless.
 
+### Alternative: single-file bundle (`kaggle_ms3_eval.py`)
+
+If you don't want to upload the whole repo as a Kaggle Dataset, [`kaggle_ms3_eval.py`](./kaggle_ms3_eval.py) is a ~4900-line self-contained script that bundles every agent module, the playbook (inlined), Member 4's PlaybookEnricher and RuntraceFormatter, and the eval runner into one file. Drop it onto a Kaggle notebook and run:
+
+```bash
+!pip install -q --upgrade unsloth unsloth_zoo
+!pip install -q -U 'bitsandbytes>=0.46.1'
+!pip install -q rich tqdm pandas pyyaml sentence-transformers chromadb neo4j huggingface_hub kagglehub
+!python kaggle_ms3_eval.py --retrieval vector --output-dir /kaggle/working/outputs/ms3
+```
+
+Same outputs as the notebook (`predictions_ms3.json`, `runtraces/`, `evaluation_metrics_combined.csv`, `runtraces_ms3.zip`). Flags:
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--retrieval`  | `vector`                            | `vector` (ChromaDB) or `graphrag` (Neo4j) |
+| `--output-dir` | `/kaggle/working/outputs/ms3`       | Where to write deliverables |
+| `--limit`      | none                                | Cap N contracts (smoke run) |
+| `--model`      | `unsloth/Qwen2.5-7B-Instruct-bnb-4bit` | BASE model only — do NOT point at a LoRA adapter (§2f) |
+| `--max-seq-len`| `8192`                              | Bump to `16384` for very long NDA contracts; never drop to 2048 (silent truncation) |
+| `--ms1-csv`    | none                                | MS1 metrics CSV to merge into the combined CSV (§5b) |
+
+Regenerate the bundle when team members push changes by running:
+```powershell
+python scripts/build_kaggle_bundle.py
+```
+The bundler concatenates every module in dependency order, inlines `playbook.yaml`, strips relative imports, and emits the updated single file at the repo root.
+
 ---
 
 ## 6. Troubleshooting
