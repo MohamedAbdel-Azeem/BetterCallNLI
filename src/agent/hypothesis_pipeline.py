@@ -7,8 +7,8 @@ Loops over all 17 hypotheses from the playbook and runs:
 Returns a unified result dict consumed by the Orchestrator and eventually
 the RuntraceFormatter (Task 4).
 
-ReviewerAgent is imported with a graceful fallback stub so this file
-works immediately, even before Member 3 delivers reviewer_agent.py.
+HypothesisAnalyst feeds each verdict to ReviewerAgent, which scores it
+and either accepts it or returns critique for the next retry attempt.
 """
 
 from __future__ import annotations
@@ -23,28 +23,7 @@ from .hypothesis_analyst import HypothesisAnalyst
 
 DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 
-# ── ReviewerAgent — real or stub ──────────────────────────────────────────────
-
-try:
-    from .reviewer_agent import ReviewerAgent as _ReviewerAgent
-
-    class ReviewerAgent(_ReviewerAgent):  # type: ignore[misc]
-        pass
-
-except ImportError:
-    class ReviewerAgent:  # type: ignore[no-redef]
-        """Stub — auto-replaced when src/agent/reviewer_agent.py is ready."""
-
-        def __init__(self, hf_token: str, model: str = DEFAULT_MODEL) -> None:
-            pass
-
-        def review(
-            self,
-            verdict: Dict[str, Any],
-            contract: Dict[str, Any],
-            hypothesis: Dict[str, Any],
-        ) -> Dict[str, Any]:
-            return {"accepted": True, "rejection_reasons": [], "feedback": ""}
+from .reviewer_agent import ReviewerAgent
 
 
 # ── playbook loader ───────────────────────────────────────────────────────────
@@ -78,7 +57,7 @@ class HypothesisPipeline:
         model: str = DEFAULT_MODEL,
     ) -> None:
         self.analyst  = HypothesisAnalyst(retriever, hf_token, model=model)
-        self.reviewer = ReviewerAgent(hf_token=hf_token, model=model)
+        self.reviewer = ReviewerAgent(model=model)
         self.playbook = _load_playbook(playbook_path)
 
     # ── public API ────────────────────────────────────────────────────────────
@@ -109,7 +88,8 @@ class HypothesisPipeline:
             }
 
             verdict:          Dict[str, Any] | None = None
-            candidate:        Dict[str, Any] = {}
+            best_candidate:   Dict[str, Any] = {}
+            best_score:       int = -1
             feedback:         str = ""
             trace_tool_calls: List[Dict[str, Any]] = []
             attempts:         int = 0
@@ -128,22 +108,26 @@ class HypothesisPipeline:
                 trace_tool_calls.extend(analyst_tcs)
 
                 # ── Reviewer ─────────────────────────────────────────────────
-                rev_result = self.reviewer.review(candidate, contract, hyp)
+                rev_result = self.reviewer.review(candidate, hyp, attempt=attempt)
 
-                # Collect reviewer tool calls if provided (Member 3 may add them)
                 rev_tcs = rev_result.pop("_tool_calls", [])
                 trace_tool_calls.extend(rev_tcs)
 
+                score = rev_result.get("score", 0)
+                if score > best_score:
+                    best_score     = score
+                    best_candidate = candidate
+
                 if rev_result.get("accepted", False):
-                    verdict   = candidate
-                    accepted  = True
+                    verdict  = candidate
+                    accepted = True
                     break
 
                 feedback = rev_result.get("feedback", "")
 
-            # Best-effort: use last candidate if all 3 attempts rejected
+            # Fall back to the highest-scoring attempt if all 3 were rejected
             if verdict is None:
-                verdict = candidate
+                verdict = best_candidate
 
             verdicts.append(verdict)
             all_tool_calls.extend(trace_tool_calls)
