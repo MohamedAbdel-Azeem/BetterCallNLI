@@ -147,26 +147,39 @@ After running `--mode evaluate` end-to-end you should have:
 
 ---
 
-## 5. Running on Kaggle (no fine-tune)
+## 5. Running on Kaggle (local base model, no HF Serverless)
 
-Per §2f the fine-tuned model is NOT used. All LLM calls hit HuggingFace Serverless and retrieval hits ChromaDB Cloud / Neo4j Aura — they're all network services, so Kaggle is just a remote CPU runner with reliable uptime. Use it when you want to launch the full ~hour-plus evaluation and walk away.
+For evaluation runs that hit the LLM ~6 000+ times (123 contracts × 17 hypotheses × up-to-3 attempts), HF Serverless quotas can be a bottleneck. The Kaggle path loads a **base** Qwen2.5 model directly on a T4 GPU and routes every agent's `chat_completion(...)` through it via a drop-in `LocalInferenceClient`. No HF API calls during the run.
+
+**Spec compliance (§2f).** The model loaded is the **base** Qwen2.5-7B-Instruct — same family as your MS1 fine-tune, NO LoRA adapter attached. Do not point `MODEL_NAME` at your `qwen3-4B-nli-lora-adapter`.
 
 ### Steps
 
-1. **Upload the repo as a Kaggle Dataset.** Zip the project root and add it to the notebook's *Add data* panel. The default expected mount path is `/kaggle/input/bettercallnli/BetterCallNLI` (update `REPO_DIR` in Cell 2 if yours differs).
-2. **Add Kaggle Secrets** under *Add-ons → Secrets*:
-   - `HF_TOKEN` (always required)
-   - `CHROMA_API_KEY` (required for `RETRIEVAL_MODE = "vector"`)
-   - `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` (required for `RETRIEVAL_MODE = "graphrag"`)
-3. **Open** [`notebooks/run_ms3_kaggle.ipynb`](./notebooks/run_ms3_kaggle.ipynb). Accelerator can stay on **None / CPU** — no model is loaded locally.
-4. **Run all cells.** Outputs land in `/kaggle/working/outputs/ms3/` with the same files as the local CLI eval, including `runtraces_ms3.zip` (§5c) and `evaluation_metrics_combined.csv` (§5b).
-5. **Download** the artifacts via Kaggle's *Output* tab.
+1. **Upload the repo as a Kaggle Dataset.** Zip the project root and add it to the notebook's *Add data* panel. Default mount path: `/kaggle/input/bettercallnli/BetterCallNLI` (update `REPO_DIR` in Cell 2 if different).
+2. **Enable GPU.** *Settings → Accelerator → GPU T4 x2* (or any single T4 — the 4-bit 7B model fits in ~10 GB).
+3. **Add Kaggle Secrets** under *Add-ons → Secrets*:
+   - `CHROMA_API_KEY` (for `RETRIEVAL_MODE = "vector"`)
+   - `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` (for `RETRIEVAL_MODE = "graphrag"`)
+   - `HF_TOKEN` is optional — only needed if Qwen weights require gated access. The shim ignores it for inference.
+4. **Open** [`notebooks/run_ms3_kaggle.ipynb`](./notebooks/run_ms3_kaggle.ipynb) and run all cells. The flow:
+   - Cell 1: install Unsloth + bitsandbytes + agent deps
+   - Cell 2: configure paths, pull secrets, set `MODEL_NAME` (default `unsloth/Qwen2.5-7B-Instruct-bnb-4bit`)
+   - Cell 3: load the base model in 4-bit on GPU 0
+   - Cell 4: `install_as_global_client(model, tokenizer)` — replaces `huggingface_hub.InferenceClient` with `LocalInferenceClient`
+   - Cell 5: build orchestrator + 1-contract smoke
+   - Cell 6: full evaluation (~2–4 hours on T4)
+   - Cell 7: per-hypothesis breakdown + file listing
+5. **Download** the artifacts via the *Output* tab:
+   - `outputs/ms3/runtraces_ms3.zip` (§5c deliverable)
+   - `outputs/ms3/evaluation_metrics_combined.csv` (§5b deliverable)
 
-The Kaggle notebook is a thin wrapper around `scripts.evaluate_ms3.run_evaluation` — the same code the local CLI calls — so results are identical between the two environments.
+### How the shim works
 
-### Integrating Member 4's runtrace work
+`install_as_global_client(model, tokenizer)`:
+1. Replaces `huggingface_hub.InferenceClient` with a `LocalInferenceClient` subclass that captures the loaded model+tokenizer.
+2. Walks the already-imported agent modules (`src.agent.intent_router`, `src.agent.conversation_agent`, `src.agent.hypothesis_analyst`, `src.agent.reviewer_agent`) and rebinds their local `InferenceClient` symbol — necessary because they did `from huggingface_hub import InferenceClient` at module load.
 
-When [`src/enrichment/playbook_enricher.py`](./src/enrichment/playbook_enricher.py) and [`src/utils/runtrace.py`](./src/utils/runtrace.py) are merged into this branch, [scripts/evaluate_ms3.py](./scripts/evaluate_ms3.py) **automatically routes through them** via the soft-import block at the top of the file. The runner prefers `PlaybookEnricher.enrich()` and `RuntraceFormatter.build_contract_runtrace()` when importable and falls back to the local shims if either fails. Both the local CLI and the Kaggle notebook pick this up with no code change after the merge.
+After step 2, every agent that calls `self._client.chat_completion(...)` runs against the GPU model. No agent code changes; the agents don't know they're not talking to HF Serverless.
 
 ---
 
