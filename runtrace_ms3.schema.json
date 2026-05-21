@@ -1,0 +1,444 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/contractnli-ms3-runtrace.schema.json",
+  "title": "ContractNLI MS3 RunTrace (Multi-Agent Pipeline)",
+  "description": "Milestone 3 runtrace schema for the BetterCallNLI multi-agent NDA review system. Supports two top-level modes ('contract' for full 17-hypothesis analysis, 'conversation' for legal-assistant sessions) and records per-agent tool calls with {name, args, output, count} as mandated by m3.pdf section 2h.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "mode",
+    "run",
+    "contract",
+    "playbook",
+    "retrieval_mode",
+    "intent_router",
+    "agent_traces"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0-ms3"]
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["contract", "conversation"],
+      "description": "Discriminator selecting the runtrace shape. 'contract' = one full 17-hypothesis run. 'conversation' = one user session (one or more turns)."
+    },
+    "retrieval_mode": {
+      "type": "string",
+      "enum": ["vector_rag", "graphrag"],
+      "description": "Which retrieval branch was active for this run (m3.pdf section 2g, MS2 section 2b)."
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "started_at", "ended_at", "framework", "parameters"],
+      "properties": {
+        "run_id":      { "type": "string", "minLength": 8 },
+        "started_at":  { "type": "string", "format": "date-time" },
+        "ended_at":    { "type": "string", "format": "date-time" },
+        "framework":   { "type": "string", "enum": ["multi_agent_pipeline"] },
+        "deterministic": { "type": "boolean" },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["base_model"],
+          "properties": {
+            "base_model":  { "type": "string" },
+            "seed":        { "type": "integer", "minimum": 0 },
+            "temperature": { "type": "number",  "minimum": 0 },
+            "max_tokens":  { "type": "integer", "minimum": 1 },
+            "reviewer_threshold": { "type": "integer", "minimum": 1, "maximum": 10 },
+            "max_review_attempts": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_id", "source_type", "hash_sha256"],
+      "properties": {
+        "contract_id":  { "type": "string" },
+        "source_type":  { "type": "string", "enum": ["txt", "pdf", "docx", "unknown"] },
+        "source_name":  { "type": "string" },
+        "language":     { "type": "string", "default": "en" },
+        "hash_sha256":  { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+        "char_count":   { "type": "integer", "minimum": 0 },
+        "chunks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["chunk_id", "text", "span"],
+            "properties": {
+              "chunk_id":     { "type": "string" },
+              "text":         { "type": "string" },
+              "span": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["char_start", "char_end"],
+                "properties": {
+                  "char_start": { "type": "integer", "minimum": 0 },
+                  "char_end":   { "type": "integer", "minimum": 0 }
+                }
+              },
+              "page":         { "type": "integer", "minimum": 1 },
+              "section_path": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "playbook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["playbook_id", "version", "ruleset_hash"],
+      "properties": {
+        "playbook_id":  { "type": "string" },
+        "version":      { "type": "string" },
+        "ruleset_hash": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+        "rule_params":  { "type": "object", "additionalProperties": true }
+      }
+    },
+    "intent_router": {
+      "$ref": "#/$defs/ToolCall",
+      "description": "Always present. Records the single routing decision in contract mode; in conversation mode this field carries the first turn's routing call (per-turn routing calls are also recorded inside agent_traces)."
+    },
+    "agent_traces": {
+      "type": "array",
+      "minItems": 1,
+      "items":   { "$ref": "#/$defs/AgentTrace" },
+      "description": "One entry per (agent, scope) pair. In contract mode: one trace per hypothesis per agent. In conversation mode: one trace per (turn, agent) pair."
+    },
+    "enriched_verdicts": {
+      "type": "array",
+      "minItems": 17,
+      "maxItems": 17,
+      "items": { "$ref": "#/$defs/EnrichedVerdict" },
+      "description": "Required when mode='contract'. Final accepted verdict per hypothesis, with playbook-derived risk/severity/action fields applied by PlaybookEnricher."
+    },
+    "metrics": {
+      "$ref": "#/$defs/Metrics",
+      "description": "Required when mode='contract'. Same shape as Milestone 1 to enable side-by-side comparison."
+    },
+    "conversation": {
+      "$ref": "#/$defs/Conversation",
+      "description": "Required when mode='conversation'. Captures session_id, turns, and per-turn evidence vs precedents (MS2 section 2c distinction)."
+    },
+    "run_validations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ValidationResult" }
+    }
+  },
+  "allOf": [
+    {
+      "if":   { "properties": { "mode": { "const": "contract" } } },
+      "then": { "required": ["enriched_verdicts", "metrics"] }
+    },
+    {
+      "if":   { "properties": { "mode": { "const": "conversation" } } },
+      "then": { "required": ["conversation"] }
+    }
+  ],
+
+  "$defs": {
+
+    "ToolCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "args", "output", "count"],
+      "description": "m3.pdf section 2h: name, args, output, count are all required. latency_ms is optional but always emitted by current implementation.",
+      "properties": {
+        "name":       { "type": "string" },
+        "args":       { "type": "object", "additionalProperties": true },
+        "output":     { "type": "object", "additionalProperties": true },
+        "count":      { "type": "integer", "minimum": 0, "description": "Number of invocations represented by this tool_call record (1 for a single call; >1 when aggregated)." },
+        "latency_ms": { "type": "number", "minimum": 0 }
+      }
+    },
+
+    "AgentTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent_id", "attempts", "tool_calls", "accepted"],
+      "properties": {
+        "agent_id": {
+          "type": "string",
+          "enum": [
+            "intent_router",
+            "conversation_agent",
+            "hypothesis_analyst",
+            "hypothesis_reviewer"
+          ]
+        },
+        "hypothesis_id": {
+          "type": ["string", "null"],
+          "pattern": "^H(0[1-9]|1[0-7])$",
+          "description": "Set for contract-mode hypothesis agents; null otherwise."
+        },
+        "turn_id": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "Set for conversation-mode agents; null otherwise."
+        },
+        "attempts":   { "type": "integer", "minimum": 1 },
+        "accepted":   { "type": "boolean" },
+        "tool_calls": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/ToolCall" }
+        },
+        "final_verdict": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/Verdict" }
+          ]
+        },
+        "started_at": { "type": "string", "format": "date-time" },
+        "ended_at":   { "type": "string", "format": "date-time" }
+      }
+    },
+
+    "Verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hypothesis_id", "label", "confidence", "reasoning", "evidence"],
+      "description": "Raw analyst output (pre-enrichment). EnrichedVerdict extends this with playbook fields.",
+      "properties": {
+        "hypothesis_id":    { "type": "string", "pattern": "^H(0[1-9]|1[0-7])$" },
+        "label":            { "type": "string", "enum": ["ENTAILED", "CONTRADICTED", "NOT_MENTIONED"] },
+        "confidence":       { "type": "number", "minimum": 0, "maximum": 1 },
+        "reasoning":        { "type": "string" },
+        "evidence":         {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EvidenceSpan" }
+        },
+        "counter_evidence": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              { "type": "string" },
+              { "$ref": "#/$defs/EvidenceSpan" }
+            ]
+          }
+        }
+      }
+    },
+
+    "EnrichedVerdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hypothesis_id",
+        "hypothesis_text",
+        "label",
+        "confidence",
+        "reasoning",
+        "evidence",
+        "accepted",
+        "attempts",
+        "risk"
+      ],
+      "properties": {
+        "hypothesis_id":   { "type": "string", "pattern": "^H(0[1-9]|1[0-7])$" },
+        "hypothesis_text": { "type": "string" },
+        "label":           { "type": "string", "enum": ["ENTAILED", "CONTRADICTED", "NOT_MENTIONED"] },
+        "confidence":      { "type": "number", "minimum": 0, "maximum": 1 },
+        "reasoning":       { "type": "string" },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EvidenceSpan" },
+          "description": "Contract-grounded spans only. Retrieved precedents must never appear here (MS2 section 2c, m3.pdf section 2f rule)."
+        },
+        "counter_evidence": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              { "type": "string" },
+              { "$ref": "#/$defs/EvidenceSpan" }
+            ]
+          }
+        },
+        "accepted":  { "type": "boolean", "description": "Did the reviewer accept the final attempt?" },
+        "attempts":  { "type": "integer", "minimum": 1, "description": "Number of analyst->reviewer cycles spent on this hypothesis." },
+        "gold_label": {
+          "type": ["string", "null"],
+          "enum": ["ENTAILED", "CONTRADICTED", "NOT_MENTIONED", null],
+          "description": "Only populated when running evaluate mode against the MS1 test split."
+        },
+        "risk": { "$ref": "#/$defs/Risk" },
+        "validations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ValidationResult" }
+        }
+      }
+    },
+
+    "EvidenceSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["quote"],
+      "properties": {
+        "quote":           { "type": "string" },
+        "char_start":      { "type": "integer", "minimum": -1 },
+        "char_end":        { "type": "integer", "minimum": -1 },
+        "relevance_score": { "type": "number",  "minimum": 0, "maximum": 1 },
+        "chunk_id":        { "type": "string" },
+        "verified":        { "type": "boolean" },
+        "note":            { "type": "string" }
+      }
+    },
+
+    "Risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "action", "status", "criticality", "playbook_rule_ids", "rationale"],
+      "description": "Playbook-derived risk block produced by PlaybookEnricher.",
+      "properties": {
+        "severity":    { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "action":      { "type": "string", "enum": ["ACCEPT", "CLARIFY", "NEGOTIATE", "ESCALATE"] },
+        "status":      { "type": "string", "enum": ["satisfied", "conflict", "missing"] },
+        "criticality": { "type": "string", "enum": ["P0", "P1", "P2"] },
+        "playbook_rule_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "rationale": { "type": "string" },
+        "flags": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "Conversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session_id", "turns"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "turn_count": { "type": "integer", "minimum": 0 },
+        "turns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ConversationTurn" }
+        }
+      }
+    },
+
+    "ConversationTurn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["turn_id", "user_prompt", "assistant_response", "retrieval_mode"],
+      "properties": {
+        "turn_id":            { "type": "integer", "minimum": 1 },
+        "timestamp":          { "type": "string", "format": "date-time" },
+        "user_prompt":        { "type": "string" },
+        "assistant_response": { "type": "string" },
+        "retrieval_mode":     { "type": "string", "enum": ["vector_rag", "graphrag"] },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EvidenceSpan" },
+          "description": "Contract-grounded quotes only (MS2 section 2c distinction)."
+        },
+        "precedents": {
+          "type": "array",
+          "description": "External retrieval results from the training corpus. Used to reason; MUST NOT be cited as contract evidence.",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "id":     { "type": "string" },
+              "text":   { "type": "string" },
+              "label":  { "type": "string" },
+              "score":  { "type": "number" }
+            }
+          }
+        },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "prompt_tokens":     { "type": "integer", "minimum": 0 },
+            "completion_tokens": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+
+    "Metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hypothesis_count",
+        "correct_count",
+        "compliant_count",
+        "quote_integrity_count",
+        "contract_accuracy",
+        "groundedness_rate",
+        "quote_integrity_rate",
+        "contract_latency_ms",
+        "label_counts"
+      ],
+      "description": "MS1-compatible metrics so MS3 results can be diffed directly against the MS1 baseline.",
+      "properties": {
+        "hypothesis_count":     { "type": "integer", "const": 17 },
+        "correct_count":        { "type": "integer", "minimum": 0, "maximum": 17 },
+        "compliant_count":      { "type": "integer", "minimum": 0, "maximum": 17 },
+        "quote_integrity_count":{ "type": "integer", "minimum": 0, "maximum": 17 },
+        "contract_accuracy":    { "type": "number",  "minimum": 0, "maximum": 1 },
+        "groundedness_rate":    { "type": "number",  "minimum": 0, "maximum": 1 },
+        "quote_integrity_rate": { "type": "number",  "minimum": 0, "maximum": 1 },
+        "contract_latency_ms":  { "type": "number",  "minimum": 0 },
+        "label_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ENTAILED", "CONTRADICTED", "NOT_MENTIONED"],
+          "properties": {
+            "ENTAILED":      { "type": "integer", "minimum": 0, "maximum": 17 },
+            "CONTRADICTED":  { "type": "integer", "minimum": 0, "maximum": 17 },
+            "NOT_MENTIONED": { "type": "integer", "minimum": 0, "maximum": 17 }
+          }
+        },
+        "confusion_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "review_acceptance_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of hypotheses where the reviewer accepted on attempt 1."
+        },
+        "avg_review_attempts": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3
+        }
+      }
+    },
+
+    "ValidationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["validator_id", "status", "message"],
+      "properties": {
+        "validator_id":          { "type": "string" },
+        "status":                { "type": "string", "enum": ["PASS", "FAIL", "WARN"] },
+        "message":               { "type": "string" },
+        "related_hypothesis_id": { "type": "string" },
+        "related_turn_id":       { "type": "integer", "minimum": 1 },
+        "related_chunk_ids":     {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}
