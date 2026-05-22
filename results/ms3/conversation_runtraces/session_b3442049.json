@@ -1,0 +1,152 @@
+{
+  "schema_version": "1.0-ms3",
+  "mode": "conversation",
+  "retrieval_mode": "graphrag",
+  "run": {
+    "run_id": "ms3-20260522T184701-60e4fc23",
+    "started_at": "2026-05-22T18:30:09.860715+00:00",
+    "ended_at": "2026-05-22T18:47:01.854308+00:00",
+    "framework": "multi_agent_pipeline",
+    "parameters": {
+      "base_model": "Qwen/Qwen2.5-7B-Instruct"
+    }
+  },
+  "contract": {
+    "contract_id": "1",
+    "source_type": "txt",
+    "hash_sha256": "944f3cc63d215fdeb4182cbeb0d4b6ed3f3a5dcc51fe0680c879e709cabc0502",
+    "char_count": 16632,
+    "language": "en"
+  },
+  "playbook": {
+    "playbook_id": "contractnli_nda_minimal",
+    "version": "1.1",
+    "ruleset_hash": "522434a49314eebf038a96bdf24de823eb9f62ab090c1265528bb71cde3af51f",
+    "rule_params": {
+      "evidence_required_for": [
+        "ENTAILED",
+        "CONTRADICTED"
+      ]
+    }
+  },
+  "intent_router": {
+    "name": "intent_router",
+    "args": {
+      "user_message": "analyze"
+    },
+    "output": {
+      "intent": "hypothesis_analysis",
+      "raw_response": "[keyword match — no LLM call]",
+      "fallback_used": false
+    },
+    "count": 1,
+    "latency_ms": 0.0
+  },
+  "agent_traces": [
+    {
+      "agent_id": "intent_router",
+      "attempts": 1,
+      "accepted": true,
+      "tool_calls": [
+        {
+          "name": "intent_router",
+          "args": {
+            "user_message": "analyze"
+          },
+          "output": {
+            "intent": "hypothesis_analysis",
+            "raw_response": "[keyword match — no LLM call]",
+            "fallback_used": false
+          },
+          "count": 1,
+          "latency_ms": 0.0
+        }
+      ],
+      "turn_id": 1
+    },
+    {
+      "agent_id": "conversation_agent",
+      "attempts": 1,
+      "accepted": true,
+      "tool_calls": [
+        {
+          "name": "retrieve",
+          "args": {
+            "retrieval_mode": "graphrag",
+            "k_requested": 5
+          },
+          "output": {
+            "count": 5,
+            "top_score": 0.8151
+          },
+          "count": 5
+        },
+        {
+          "name": "conversation_agent",
+          "args": {
+            "retrieval_mode": "graphrag"
+          },
+          "output": {
+            "response_chars": 1423,
+            "evidence_count": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0
+          },
+          "count": 1
+        }
+      ],
+      "turn_id": 1
+    }
+  ],
+  "conversation": {
+    "session_id": "b3442049",
+    "created_at": "2026-05-22T18:29:54.432537+00:00",
+    "turn_count": 1,
+    "turns": [
+      {
+        "turn_id": 1,
+        "user_prompt": "whoo are the parties",
+        "assistant_response": "The parties to the Non-Disclosure Agreement are JEA and the Recipient.\n\n[EVIDENCE: \"WHEREAS, the Recipient desires to work with the discloser and/or view ______________________________________________________________________documents regarding ____________________________________ (the \"Transaction\"); and\\nWHEREAS, the discloser is required by its internal policies, state and federal laws, rules, regulations or standards to ensure that sensitive and confidential information is protected and not disclosed to the public;\\nWHEREAS, the Parties have entered into a transaction related to the _______________________. The terms of those agreements are incorporated herein.\\nJEA & Florida State Sunshine Application - JEA is a publicly owned utility and all official information sharing is governed by Florida Sunshine Laws.\"]\n\n[EVIDENCE: \"THIS NON-DISCLOSURE AGREEMENT (\"Agreement\") is entered into this ______day of\\n__________ by and between JEA, located at 21 West Church Street, Jacksonville, Florida 32202 (the \"Discloser\"), and ____________________________________________________________ with an address at ______________________________________________ (the \"Recipient\") (hereafter Discloser and Recipient shall be referred to as the PARTIES}.\"]\n\nThe agreement specifies that JEA is the Discloser and the Recipient is the other party who desires to work with JEA and view certain documents related to a transaction.",
+        "retrieval_mode": "graphrag",
+        "timestamp": "2026-05-22T18:33:32.271186+00:00",
+        "precedents": [
+          {
+            "text": "Each Party agrees:",
+            "clause_id": "581_span_37",
+            "label": "ENTAILED",
+            "score": 0.8151,
+            "hypothesis_id": "—"
+          },
+          {
+            "text": "Each Party agrees:",
+            "clause_id": "580_span_43",
+            "label": "ENTAILED",
+            "score": 0.8151,
+            "hypothesis_id": "—"
+          },
+          {
+            "text": "1. The Parties and their Representatives ",
+            "clause_id": "589_span_11",
+            "label": "ENTAILED",
+            "score": 0.8109,
+            "hypothesis_id": "—"
+          },
+          {
+            "text": "Each party shall:",
+            "clause_id": "196_span_49",
+            "label": "ENTAILED",
+            "score": 0.8095,
+            "hypothesis_id": "—"
+          },
+          {
+            "text": "Each party hereto shall: ",
+            "clause_id": "159_span_20",
+            "label": "CONTRADICTED",
+            "score": 0.805,
+            "hypothesis_id": "—"
+          }
+        ]
+      }
+    ]
+  }
+}

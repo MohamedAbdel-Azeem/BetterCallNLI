@@ -185,6 +185,7 @@ class HypothesisAnalyst:
         tool_calls.append(
             self._analyst_tool_call(h_id, attempt, raw_response, verdict, latency_ms)
         )
+        verdict["precedents"] = precedents   
 
         return verdict, tool_calls
 

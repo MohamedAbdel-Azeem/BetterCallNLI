@@ -330,6 +330,38 @@ def render_hypothesis_summary(
         box=ROUNDED,
         padding=(0, 1),
     ))
+    # After the existing table panel, add:
+    for v in verdicts:
+        precedents = v.get("precedents", []) or []
+        if not precedents:
+            continue
+
+        prec_table = Table(
+            show_header=True, header_style=BRAND_ACCENT,
+            box=ROUNDED, border_style=BRAND_MUTED, expand=False,
+        )
+        prec_table.add_column("#",      justify="right", style=BRAND_MUTED, width=3)
+        prec_table.add_column("Label",  width=14)
+        prec_table.add_column("Score",  justify="right", width=6)
+        prec_table.add_column("Snippet", overflow="fold")
+
+        for i, p in enumerate(precedents, 1):
+            label   = p.get("label", "?")
+            style   = LABEL_COLOURS.get(label.upper(), BRAND_MUTED)
+            score   = f"{p.get('score', 0):.2f}"
+            snippet = p.get("text", "")
+            snippet = (snippet[:140] + "…") if len(snippet) > 140 else snippet
+            prec_table.add_row(str(i), Text(label, style=style), score, snippet)
+
+        h_id = v.get("hypothesis_id", "?")
+        con.print(Panel(
+            prec_table,
+            title=f"[{BRAND_ACCENT}]Retrieved precedents · {h_id} · graphrag[/]",
+            title_align="left",
+            border_style=BRAND_MUTED,
+            box=ROUNDED,
+            padding=(0, 1),
+        ))
 
 
 # ── tool-call trace renderer ──────────────────────────────────────────────────
