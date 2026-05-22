@@ -13,6 +13,7 @@ Grounding rule enforced here (per Milestone 2 spec):
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any, Dict, List, Optional
 
@@ -60,7 +61,11 @@ class ConversationAgent:
     ) -> None:
         self.retriever = retriever
         self.model = model
-        self._client = InferenceClient(model=model, token=hf_token)
+        self._client = InferenceClient(
+            provider=os.getenv("HF_PROVIDER", "featherless-ai"),
+            model=model,
+            token=hf_token,
+        )
 
     # ── public API ────────────────────────────────────────────────────────────
 

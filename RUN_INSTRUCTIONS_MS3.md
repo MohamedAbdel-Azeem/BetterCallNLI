@@ -44,12 +44,22 @@ pip install -r requirements_ms3.txt
 Required `.env` keys (place in repo root):
 
 ```
-HF_TOKEN=hf_...                    # HuggingFace Serverless API (required, all modes)
+HF_TOKEN=hf_...                    # HuggingFace API token, must have "Make calls to Inference Providers" enabled (required, all modes)
+HF_PROVIDER=featherless-ai         # HuggingFace inference provider (optional, defaults to featherless-ai)
 NEO4J_URI=neo4j+s://...            # required for --retrieval graphrag
 NEO4J_USERNAME=...
 NEO4J_PASSWORD=...
 CHROMA_API_KEY=ck-...              # required for --retrieval vector
 ```
+
+`HF_PROVIDER` selects which of HuggingFace's routed inference providers
+serves `Qwen/Qwen2.5-7B-Instruct` (analyst/reviewer/conversation) and
+`Qwen/Qwen2.5-0.5B-Instruct` (intent router). The default
+`featherless-ai` is the only provider currently serving both models;
+`hf-inference` (the free provider) no longer serves either. If
+featherless-ai is unavailable for you, see
+[HF's model page](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct)
+for the current provider list.
 
 ---
 

@@ -11,6 +11,7 @@ so the model can correct specific issues.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -114,7 +115,11 @@ class HypothesisAnalyst:
 
         if not use_local:
             from huggingface_hub import InferenceClient
-            self._client = InferenceClient(model=model, token=hf_token)
+            self._client = InferenceClient(
+                provider=os.getenv("HF_PROVIDER", "featherless-ai"),
+                model=model,
+                token=hf_token,
+            )
         else:
             self._client = None
 

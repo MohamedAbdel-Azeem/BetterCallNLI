@@ -191,7 +191,11 @@ class ReviewerAgent:
         self.threshold = threshold
         self.model = model
         token = os.getenv("HF_TOKEN")
-        self._client = InferenceClient(model=model, token=token)
+        self._client = InferenceClient(
+            provider=os.getenv("HF_PROVIDER", "featherless-ai"),
+            model=model,
+            token=token,
+        )
 
     # ── public API ────────────────────────────────────────────────────────────
 

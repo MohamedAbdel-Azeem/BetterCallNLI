@@ -22,6 +22,7 @@ Runtrace:
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Dict, Literal, Tuple
 
@@ -83,7 +84,11 @@ class IntentRouter:
         hf_token: str,
         model: str = DEFAULT_MODEL,
     ) -> None:
-        self._client = InferenceClient(model=model, token=hf_token)
+        self._client = InferenceClient(
+            provider=os.getenv("HF_PROVIDER", "featherless-ai"),
+            model=model,
+            token=hf_token,
+        )
         self.model = model
 
     # ── public API ────────────────────────────────────────────────────────────
