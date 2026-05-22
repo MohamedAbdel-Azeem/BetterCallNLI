@@ -173,6 +173,23 @@ For evaluation runs that hit the LLM ~6 000+ times (123 contracts × 17 hypothes
    - `outputs/ms3/runtraces_ms3.zip` (§5c deliverable)
    - `outputs/ms3/evaluation_metrics_combined.csv` (§5b deliverable)
 
+### Resuming after a Kaggle timeout
+
+`run_evaluation()` checkpoints after **every contract** to `<output_dir>/checkpoint.json` (atomic write, safe to interrupt). The file holds the per-contract verdicts, accumulated per-verdict scores, latencies, and skipped list.
+
+If your Kaggle session times out / restarts mid-run:
+
+1. Re-run **Cells 1 → 5** to reload the model, install the shim, and rebuild the orchestrator.
+2. Re-run **Cell 6** — `run_evaluation()` sees the existing `checkpoint.json`, prints
+   ```
+   [evaluate_ms3] resuming from checkpoint: 47 contracts already processed, 0 previously skipped
+   ```
+   …and continues from contract 48.
+
+Per-contract runtraces (`runtraces/runtrace_<id>.json`) are also written incrementally as each contract finishes, so even without the checkpoint you have durable per-contract output on disk. The final aggregated `predictions_ms3.json`, `evaluation_metrics_*.{csv,json}`, and `runtraces_ms3.zip` are produced at the very end once every contract is done.
+
+To start fresh instead of resuming, pass `resume=False` to `run_evaluation()` or delete `<output_dir>/checkpoint.json` before re-running Cell 6.
+
 ### How the shim works
 
 `install_as_global_client(model, tokenizer)`:
