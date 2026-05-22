@@ -3463,6 +3463,7 @@ class HypothesisPipeline:
                 attempts = attempt
 
                 # ── Analyst ──────────────────────────────────────────────────
+                print(f"  [{hyp['id']} attempt {attempt}/3] analyst running...", flush=True)
                 candidate, analyst_tcs = self.analyst.analyze(
                     contract=contract,
                     hypothesis=hyp,
@@ -3470,8 +3471,10 @@ class HypothesisPipeline:
                     reviewer_feedback=feedback,
                 )
                 trace_tool_calls.extend(analyst_tcs)
+                print(f"  [{hyp['id']} attempt {attempt}/3] analyst → label={candidate.get('label', '?')}", flush=True)
 
                 # ── Reviewer ─────────────────────────────────────────────────
+                print(f"  [{hyp['id']} attempt {attempt}/3] reviewer running...", flush=True)
                 rev_result = self.reviewer.review(candidate, hyp, attempt=attempt)
 
                 rev_tcs = rev_result.pop("_tool_calls", [])
@@ -3483,15 +3486,18 @@ class HypothesisPipeline:
                     best_candidate = candidate
 
                 if rev_result.get("accepted", False):
+                    print(f"  [{hyp['id']} attempt {attempt}/3] reviewer → score={score} ACCEPTED", flush=True)
                     verdict  = candidate
                     accepted = True
                     break
 
+                print(f"  [{hyp['id']} attempt {attempt}/3] reviewer → score={score} REJECTED", flush=True)
                 feedback = rev_result.get("feedback", "")
 
             # Fall back to the highest-scoring attempt if all 3 were rejected
             if verdict is None:
                 verdict = best_candidate
+            print(f"  [{hyp['id']}] done — label={verdict.get('label', '?')} accepted={accepted} attempts={attempts}", flush=True)
 
             verdicts.append(verdict)
             all_tool_calls.extend(trace_tool_calls)
@@ -4019,7 +4025,13 @@ class LocalInferenceClient:
         if do_sample:
             gen_kwargs["temperature"] = max(temperature, 1e-5)
 
-        with torch.no_grad():
+        import warnings
+        with torch.no_grad(), warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="Both `max_new_tokens`.*`max_length`",
+                category=UserWarning,
+            )
             output_ids = self._model.generate(**inputs, **gen_kwargs)
 
         new_token_ids = output_ids[0, prompt_tokens:]
@@ -4084,6 +4096,7 @@ _AGENT_MODULES = (
     "src.agent.conversation_agent",
     "src.agent.hypothesis_analyst",
     "src.agent.reviewer_agent",
+    "__main__",  # bundle: all agents share __main__ globals, not separate modules
 )
 
 
@@ -4520,7 +4533,7 @@ def write_runtrace(
 # ── main runner ───────────────────────────────────────────────────────────────
 
 def run_evaluation(
-    orchestrator: Any,
+    pipeline: Any,
     contracts: List[Dict[str, Any]],
     output_dir: Path,
     *,
@@ -4531,6 +4544,9 @@ def run_evaluation(
     resume: bool = True,
     shard_index: int = 0,
     shard_total: int = 1,
+    enricher: Optional[Any] = None,
+    formatter: Optional[Any] = None,
+    retriever: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Loop over the test split, run the hypothesis pipeline on each contract,
@@ -4559,16 +4575,19 @@ def run_evaluation(
     output directories into the final §5b combined CSV and §5c runtraces zip.
 
     Args:
-        orchestrator:  a built Orchestrator (its hypothesis_pipeline is used).
+        pipeline:      a built HypothesisPipeline — called directly, no router overhead.
         contracts:     list of normalised contract dicts (from get_test_contracts).
         output_dir:    directory to write predictions / runtraces / metrics.
         limit:         optional cap for smoke testing — process only the first N.
         progress_cb:   optional callable invoked as progress_cb(i, total, contract_id).
-        playbook_path: path to playbook.yaml (§3c — deterministic policy mapping).
+        playbook_path: path to playbook.yaml (shim fallback only — prefer passing enricher).
         ms1_csv_path:  path to existing MS1 metrics CSV (§5b — combined CSV).
         resume:        if True and a checkpoint exists, skip contracts already done.
         shard_index:   0-indexed shard number for parallel runs (default 0).
         shard_total:   total number of shards (default 1 = no sharding).
+        enricher:      PlaybookEnricher instance — applied after pipeline.run().
+        formatter:     RuntraceFormatter instance — builds schema-compliant runtraces.
+        retriever:     BaseRetriever instance — used only to read retrieval mode string.
 
     Returns:
         Aggregate metrics dict (also written to evaluation_metrics_ms3.json).
@@ -4580,27 +4599,7 @@ def run_evaluation(
 
     playbook = load_playbook(playbook_path) if playbook_path else {}
 
-    # Task 4 is wired directly into the Orchestrator on the merged branch:
-    # `orchestrator.run(contract, "analyze this contract", history)` returns a
-    # result dict that already contains `enriched_verdicts` (PlaybookEnricher
-    # output) and `runtrace` (schema-compliant RuntraceFormatter output) when
-    # the intent routes to hypothesis_analysis. We use those directly and only
-    # fall back to local shims if the orchestrator didn't produce them
-    # (e.g. older orchestrator without Task 4 wiring).
-    has_task4_via_orchestrator = (
-        hasattr(orchestrator, "enricher") and hasattr(orchestrator, "formatter")
-    )
-    if has_task4_via_orchestrator:
-        print("[evaluate_ms3] using orchestrator's Task 4 wiring (enrichment + runtrace)", file=sys.stderr)
-
-    # Fallback local instances (only constructed if needed for older orchestrators)
-    task4_enricher = None
-    if _HAS_TASK4_ENRICHER and playbook_path is not None and not has_task4_via_orchestrator:
-        try:
-            task4_enricher = PlaybookEnricher(str(playbook_path))  # type: ignore[misc]
-            print("[evaluate_ms3] using standalone Task 4 PlaybookEnricher", file=sys.stderr)
-        except Exception as exc:
-            print(f"[evaluate_ms3] Task 4 PlaybookEnricher init failed ({exc}); using local shim", file=sys.stderr)
+    print("[evaluate_ms3] running pipeline directly (intent router skipped)", file=sys.stderr)
 
     # ── shard slicing (parallel runs across machines) ─────────────────────────
     if shard_total > 1:
@@ -4662,11 +4661,7 @@ def run_evaluation(
         )
         tmp.replace(checkpoint_path)
 
-    retrieval_mode = getattr(orchestrator.retriever, "mode", "unknown")
-
-    # Lazy import — ConversationHistory only needed when going through orchestrator.run
-    if has_task4_via_orchestrator:
-        pass  # [bundled] from src.agent.history import ConversationHistory  # type: ignore
+    retrieval_mode = getattr(retriever, "mode", "unknown") if retriever else "unknown"
 
     for i, contract in enumerate(selected, 1):
         c_id = contract.get("id", f"contract-{i}")
@@ -4688,28 +4683,16 @@ def run_evaluation(
             continue
 
         t_start = time.perf_counter()
+        started_at = _utc_now_iso()
         try:
-            if has_task4_via_orchestrator:
-                # Drive the full agentic pipeline through the orchestrator so
-                # PlaybookEnricher + RuntraceFormatter run automatically. The
-                # IntentRouter sees "analyze this contract" and hits the
-                # keyword fast-path (no LLM call), so this costs zero extra.
-                if hasattr(orchestrator, "reset_session"):
-                    orchestrator.reset_session()
-                result = orchestrator.run(
-                    contract     = contract,
-                    user_message = "analyze this contract",
-                    history      = ConversationHistory(),
-                )
-            else:
-                # Older orchestrator without Task 4 wiring — call pipeline directly
-                result = orchestrator.hypothesis_pipeline.run(contract)
+            result = pipeline.run(contract)
         except Exception as exc:
             print(f"[evaluate_ms3] contract {c_id} failed: {exc}", file=sys.stderr)
             skipped.append(c_id)
             if progress_cb:
                 progress_cb(i, total, c_id, status="error")
             continue
+        ended_at = _utc_now_iso()
         latency_ms = round((time.perf_counter() - t_start) * 1000, 2)
         latencies.append(latency_ms)
 
@@ -4717,19 +4700,12 @@ def run_evaluation(
         agent_traces: List[Dict[str, Any]] = result.get("agent_traces", [])
         tool_calls:   List[Dict[str, Any]] = result.get("tool_calls", [])
 
-        # §3c: enrich every verdict with deterministic playbook policy fields.
-        # Priority:
-        #   1. result["enriched_verdicts"] from orchestrator's PlaybookEnricher (preferred)
-        #   2. standalone task4_enricher.enrich() (if orchestrator didn't wire it)
-        #   3. local apply_playbook() shim (last resort)
-        enriched_from_orchestrator = result.get("enriched_verdicts")
-        if enriched_from_orchestrator:
-            verdicts = enriched_from_orchestrator
-        elif task4_enricher is not None:
+        # §3c: enrich verdicts with deterministic playbook policy fields.
+        if enricher is not None:
             try:
-                verdicts = task4_enricher.enrich(raw_verdicts)
+                verdicts = enricher.enrich(raw_verdicts)
             except Exception as exc:
-                print(f"[evaluate_ms3] Task 4 enrich() failed ({exc}); falling back to local shim", file=sys.stderr)
+                print(f"[evaluate_ms3] enrich() failed ({exc}); falling back to local shim", file=sys.stderr)
                 verdicts = [apply_playbook(v, playbook) for v in raw_verdicts] if playbook else raw_verdicts
         elif playbook:
             verdicts = [apply_playbook(v, playbook) for v in raw_verdicts]
@@ -4752,21 +4728,42 @@ def run_evaluation(
         }
 
         # §2c + §2h: write the schema-compliant runtrace.
-        # Priority:
-        #   1. result["runtrace"] — schema-compliant payload from RuntraceFormatter
-        #   2. local write_runtrace() draft (only when orchestrator didn't emit one)
         runtrace_path = runtrace_dir / f"runtrace_{c_id}.json"
-        runtrace_payload = result.get("runtrace")
-        if runtrace_payload and _HAS_TASK4_FORMATTER:
+        if formatter is not None:
             try:
-                RuntraceFormatter.save(runtrace_payload, str(runtrace_path))  # type: ignore[union-attr]
+                _stub_router_call = {
+                    "name":   "intent_router",
+                    "args":   {"user_message": "analyze this contract"},
+                    "output": {"intent": "hypothesis_analysis", "raw_response": "[eval-mode — router skipped]", "fallback_used": False},
+                    "count":  0,
+                }
+                runtrace_payload = formatter.build_contract_runtrace(
+                    contract           = contract,
+                    intent_router_call = _stub_router_call,
+                    agent_traces       = agent_traces,
+                    enriched_verdicts  = verdicts,
+                    retrieval_mode     = retrieval_mode,
+                    started_at         = started_at,
+                    ended_at           = ended_at,
+                )
+                RuntraceFormatter.save(runtrace_payload, str(runtrace_path))
             except Exception as exc:
-                print(f"[evaluate_ms3] RuntraceFormatter.save failed ({exc}); falling back to direct JSON write", file=sys.stderr)
-                runtrace_path.write_text(json.dumps(runtrace_payload, indent=2, ensure_ascii=False), encoding="utf-8")
-        elif runtrace_payload:
-            runtrace_path.write_text(json.dumps(runtrace_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+                print(f"[evaluate_ms3] RuntraceFormatter.build failed ({exc}); writing draft runtrace", file=sys.stderr)
+                normalized_tcs = normalize_tool_calls(tool_calls)
+                normalized_traces = [
+                    {**t, "tool_calls": normalize_tool_calls(t.get("tool_calls", []))}
+                    for t in agent_traces
+                ]
+                write_runtrace(
+                    contract_id=c_id,
+                    contract_text=contract.get("text", ""),
+                    agent_traces=normalized_traces,
+                    tool_calls=normalized_tcs,
+                    verdicts=verdicts,
+                    retrieval_mode=retrieval_mode,
+                    path=runtrace_path,
+                )
         else:
-            # §2h: every tool_call must have name, args, output, count
             normalized_tcs = normalize_tool_calls(tool_calls)
             normalized_traces = [
                 {**t, "tool_calls": normalize_tool_calls(t.get("tool_calls", []))}
@@ -4962,13 +4959,15 @@ def _kaggle_main(args) -> int:
         if not retriever.connect():
             raise RuntimeError("GraphRAGRetriever connect failed — check NEO4J_* secrets")
 
-    orchestrator = Orchestrator(
+    pipeline = HypothesisPipeline(
         retriever     = retriever,
         hf_token      = os.environ["HF_TOKEN"],
         playbook_path = str(playbook_path),
         model         = args.model,
     )
-    print(f"[bundle] orchestrator built (retrieval={orchestrator.retriever.mode})")
+    enricher  = PlaybookEnricher(str(playbook_path))
+    formatter = RuntraceFormatter(playbook_path=str(playbook_path), model=args.model)
+    print(f"[bundle] pipeline built (retrieval={retriever.mode})")
 
     # 6. Load contracts
     contracts = get_test_contracts()
@@ -4976,9 +4975,16 @@ def _kaggle_main(args) -> int:
 
     # 7. Run evaluation
     ms1_csv = Path(args.ms1_csv) if args.ms1_csv and Path(args.ms1_csv).exists() else None
+
+    # Shard-aware progress bar total (bar was previously set to full 123, not shard size)
+    n = len(contracts)
+    shard_start = (args.shard_index * n) // args.shard_total
+    shard_end   = ((args.shard_index + 1) * n) // args.shard_total
+    bar_total   = args.limit or (shard_end - shard_start)
+
     try:
         from tqdm.auto import tqdm
-        bar = tqdm(total=args.limit or len(contracts), desc="evaluate")
+        bar = tqdm(total=bar_total, desc="evaluate")
         def _cb(i, n, c_id, *, status="ok", latency_ms=0.0):
             bar.set_postfix_str(f"{c_id} [{status}] {latency_ms/1000:.1f}s")
             bar.update(1)
@@ -4988,7 +4994,7 @@ def _kaggle_main(args) -> int:
             print(f"  [{i}/{n}] {c_id} [{status}] {latency_ms/1000:.1f}s")
 
     metrics = run_evaluation(
-        orchestrator  = orchestrator,
+        pipeline      = pipeline,
         contracts     = contracts,
         output_dir    = Path(args.output_dir),
         limit         = args.limit,
@@ -4997,6 +5003,9 @@ def _kaggle_main(args) -> int:
         ms1_csv_path  = ms1_csv,
         shard_index   = args.shard_index,
         shard_total   = args.shard_total,
+        enricher      = enricher,
+        formatter     = formatter,
+        retriever     = retriever,
     )
     if bar:
         bar.close()
