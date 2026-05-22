@@ -301,7 +301,7 @@ if __name__ == "__main__":
     parser.add_argument("--output-dir", default="/kaggle/working/outputs/ms3")
     parser.add_argument("--limit",      type=int, default=None,
                         help="Smoke-test cap (e.g. --limit 5)")
-    parser.add_argument("--model",      default="unsloth/Qwen2.5-7B-Instruct-bnb-4bit",
+    parser.add_argument("--model",      default="unsloth/Qwen3-4B-bnb-4bit",
                         help="BASE model only — do not point at a fine-tuned adapter (§2f)")
     parser.add_argument("--max-seq-len", type=int, default=8192,
                         help="Contract + retrieved precedents + system prompt routinely 5-7k tokens; "
