@@ -397,6 +397,8 @@ def run_evaluation(
     playbook_path: Optional[Path] = None,
     ms1_csv_path: Optional[Path] = None,
     resume: bool = True,
+    shard_index: int = 0,
+    shard_total: int = 1,
 ) -> Dict[str, Any]:
     """
     Loop over the test split, run the hypothesis pipeline on each contract,
@@ -412,6 +414,18 @@ def run_evaluation(
     Kaggle kernel timeout: re-execute the cell and it picks up where it
     stopped.
 
+    Sharding (parallel runs across machines)
+    ----------------------------------------
+    Pass `shard_index=K, shard_total=N` to process only the K-th contiguous
+    block of `N` evenly-sized partitions. e.g. with 123 contracts and
+    `shard_total=5`:
+        shard 0 → contracts[0:24]
+        shard 1 → contracts[24:49]
+        ...
+        shard 4 → contracts[98:123]
+    After all shards finish, `scripts/merge_shards.py` combines the per-shard
+    output directories into the final §5b combined CSV and §5c runtraces zip.
+
     Args:
         orchestrator:  a built Orchestrator (its hypothesis_pipeline is used).
         contracts:     list of normalised contract dicts (from get_test_contracts).
@@ -421,6 +435,8 @@ def run_evaluation(
         playbook_path: path to playbook.yaml (§3c — deterministic policy mapping).
         ms1_csv_path:  path to existing MS1 metrics CSV (§5b — combined CSV).
         resume:        if True and a checkpoint exists, skip contracts already done.
+        shard_index:   0-indexed shard number for parallel runs (default 0).
+        shard_total:   total number of shards (default 1 = no sharding).
 
     Returns:
         Aggregate metrics dict (also written to evaluation_metrics_ms3.json).
@@ -453,6 +469,22 @@ def run_evaluation(
             print("[evaluate_ms3] using standalone Task 4 PlaybookEnricher", file=sys.stderr)
         except Exception as exc:
             print(f"[evaluate_ms3] Task 4 PlaybookEnricher init failed ({exc}); using local shim", file=sys.stderr)
+
+    # ── shard slicing (parallel runs across machines) ─────────────────────────
+    if shard_total > 1:
+        if not (0 <= shard_index < shard_total):
+            raise ValueError(
+                f"shard_index ({shard_index}) must be in [0, {shard_total})"
+            )
+        n = len(contracts)
+        start = (shard_index * n) // shard_total
+        end   = ((shard_index + 1) * n) // shard_total
+        contracts = contracts[start:end]
+        print(
+            f"[evaluate_ms3] shard {shard_index + 1}/{shard_total}: "
+            f"processing contracts[{start}:{end}] ({len(contracts)} of {n})",
+            file=sys.stderr,
+        )
 
     selected = contracts[: limit] if limit else contracts
     total = len(selected)
@@ -691,6 +723,10 @@ def _main() -> int:
     parser.add_argument("--limit",      type=int, default=None, help="Process only first N contracts (smoke test)")
     parser.add_argument("--playbook",   default="playbook.yaml", help="Playbook YAML for §3c deterministic policy mapping")
     parser.add_argument("--ms1-csv",    default="results/evaluation_metrics.csv", help="Existing MS1 CSV to include in the combined CSV (§5b)")
+    parser.add_argument("--shard-index", type=int, default=0,
+                        help="0-indexed shard for parallel runs (default 0)")
+    parser.add_argument("--shard-total", type=int, default=1,
+                        help="Total number of shards (default 1 = no sharding)")
     args = parser.parse_args()
 
     print(f"[evaluate_ms3] retrieval mode: {args.retrieval}")
@@ -714,6 +750,8 @@ def _main() -> int:
         progress_cb=_progress,
         playbook_path=Path(args.playbook) if args.playbook else None,
         ms1_csv_path=Path(args.ms1_csv) if args.ms1_csv else None,
+        shard_index=args.shard_index,
+        shard_total=args.shard_total,
     )
 
     print("\n=== Aggregate metrics ===")

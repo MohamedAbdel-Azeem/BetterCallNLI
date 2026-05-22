@@ -267,6 +267,8 @@ def _kaggle_main(args) -> int:
         progress_cb   = _cb,
         playbook_path = playbook_path,
         ms1_csv_path  = ms1_csv,
+        shard_index   = args.shard_index,
+        shard_total   = args.shard_total,
     )
     if bar:
         bar.close()
@@ -291,6 +293,10 @@ if __name__ == "__main__":
                              "2048 silently truncates the contract. Bump to 16384 for very long NDAs.")
     parser.add_argument("--ms1-csv",    default=None,
                         help="Path to existing MS1 evaluation_metrics.csv for the combined CSV (§5b)")
+    parser.add_argument("--shard-index", type=int, default=0,
+                        help="0-indexed shard for parallel runs across machines (default 0)")
+    parser.add_argument("--shard-total", type=int, default=1,
+                        help="Total number of shards; merge with scripts/merge_shards.py afterwards")
     args = parser.parse_args()
     raise SystemExit(_kaggle_main(args))
 '''

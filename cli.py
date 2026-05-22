@@ -453,6 +453,8 @@ def run_evaluate(args: argparse.Namespace) -> int:
             progress_cb=_cb,
             playbook_path=Path(args.playbook) if args.playbook else None,
             ms1_csv_path=Path(args.ms1_csv) if args.ms1_csv else None,
+            shard_index=args.shard_index,
+            shard_total=args.shard_total,
         )
 
     # ── final summary ─────────────────────────────────────────────────────────
@@ -537,6 +539,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--session-runtrace",  help="(converse) path for the per-session runtrace (§2c).")
     p.add_argument("--ms1-csv",           default="results/evaluation_metrics.csv",
                    help="(evaluate) existing MS1 CSV to merge into the combined CSV (§5b).")
+    p.add_argument("--shard-index",       type=int, default=0,
+                   help="(evaluate) 0-indexed shard for parallel runs across machines (default 0).")
+    p.add_argument("--shard-total",       type=int, default=1,
+                   help="(evaluate) total number of shards; merge with scripts/merge_shards.py afterwards (default 1).")
     p.add_argument("--show-cards",        action="store_true", help="(analyze) print one panel per verdict.")
     p.add_argument("-v", "--verbose",     action="store_true", help="Print tool-call traces.")
     return p

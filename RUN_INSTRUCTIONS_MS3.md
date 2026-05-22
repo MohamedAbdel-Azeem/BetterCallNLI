@@ -190,6 +190,62 @@ Per-contract runtraces (`runtraces/runtrace_<id>.json`) are also written increme
 
 To start fresh instead of resuming, pass `resume=False` to `run_evaluation()` or delete `<output_dir>/checkpoint.json` before re-running Cell 6.
 
+### Parallel runs across 5 machines (sharding)
+
+The full evaluation makes ~6 000 LLM calls — ~3 hours on one T4. Split across **5 Kaggle accounts** it finishes in ~30 minutes.
+
+**Setup:**
+
+1. **Hand out one notebook per friend** from [`notebooks/shards/`](./notebooks/shards/):
+   - `shard_0.ipynb` → friend 1 (processes contracts `[0:24]`)
+   - `shard_1.ipynb` → friend 2 (processes contracts `[24:49]`)
+   - `shard_2.ipynb` → friend 3 (processes contracts `[49:73]`)
+   - `shard_3.ipynb` → friend 4 (processes contracts `[73:98]`)
+   - `shard_4.ipynb` → you (processes contracts `[98:123]`)
+2. **Each friend:**
+   - Open their assigned notebook on Kaggle (GPU T4 x2 enabled)
+   - Add `CHROMA_API_KEY` to Kaggle Secrets
+   - Run All cells — the notebook downloads the latest bundle from GitHub, runs only its slice with checkpointing, then zips the output
+   - Download `/kaggle/working/ms3_shard_<N>.zip` from the Output tab
+   - Send the zip to whoever's doing the merge
+3. **The merger:**
+   - Extract all 5 zips into one parent directory:
+     ```
+     results/ms3/shards/
+       shard_0/   ← extracted contents
+       shard_1/
+       shard_2/
+       shard_3/
+       shard_4/
+     ```
+   - Run:
+     ```powershell
+     python scripts/merge_shards.py \
+         --shards-parent results/ms3/shards \
+         --output-dir results/ms3/merged
+     ```
+   - Outputs in `results/ms3/merged/`:
+     - `predictions_ms3.json` — every contract's verdicts
+     - `runtraces/runtrace_<id>.json` — every per-contract runtrace
+     - `evaluation_metrics_ms3.{csv,json}` — re-aggregated metrics from the union of all shards
+     - `evaluation_metrics_combined.csv` — §5b deliverable (MS1 + merged MS3 row)
+     - `runtraces_ms3.zip` — §5c deliverable
+
+**Manual shard invocation** (CLI / bundle):
+```bash
+# bundled single-file path
+!python kaggle_ms3_eval.py --retrieval vector \
+    --shard-index 2 --shard-total 5 \
+    --output-dir /kaggle/working/outputs/ms3_shard_2
+
+# repo-installed CLI path
+python cli.py --mode evaluate --retrieval vector \
+    --shard-index 2 --shard-total 5 \
+    --output-dir results/ms3/shard_2
+```
+
+Each shard maintains its own `checkpoint.json`, so individual shards are independently resumable after Kaggle timeouts.
+
 ### How the shim works
 
 `install_as_global_client(model, tokenizer)`:
