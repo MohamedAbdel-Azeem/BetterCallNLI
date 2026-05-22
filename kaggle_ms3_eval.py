@@ -2844,6 +2844,7 @@ class HypothesisAnalyst:
         try:
             data = _extract_json(raw)
         except ValueError:
+            print(f"  [{h_id}] PARSE ERROR — raw ({len(raw)} chars): {raw[:120]!r}", flush=True)
             return fallback
 
         # Normalise and validate
@@ -2916,8 +2917,9 @@ class HypothesisAnalyst:
 
 def _extract_json(text: str) -> Dict[str, Any]:
     """Extract the first valid JSON object from an LLM response."""
-    # Strip Qwen3 thinking tags
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    # Strip Qwen3 thinking tags — handles both closed and unclosed (the latter
+    # happens when max_new_tokens cuts off generation mid-think).
+    text = re.sub(r"<think>.*?(?:</think>|$)", "", text, flags=re.DOTALL).strip()
 
     # Try direct parse
     try:
@@ -4070,14 +4072,22 @@ class LocalInferenceClient:
         """
         apply = getattr(self._tokenizer, "apply_chat_template", None)
         if callable(apply) and getattr(self._tokenizer, "chat_template", None):
-            try:
-                return apply(
-                    messages,
-                    tokenize=False,
-                    add_generation_prompt=True,
-                )
-            except Exception:
-                pass
+            # Disable Qwen3 thinking mode so the model outputs JSON directly.
+            # Thinking mode eats the entire token budget before outputting anything,
+            # causing silent parse failures that fall back to NOT_MENTIONED.
+            # TypeError means the tokenizer doesn't support enable_thinking (pre-Qwen3).
+            for extra in ({"enable_thinking": False}, {}):
+                try:
+                    return apply(
+                        messages,
+                        tokenize=False,
+                        add_generation_prompt=True,
+                        **extra,
+                    )
+                except TypeError:
+                    continue
+                except Exception:
+                    break
 
         # Manual ChatML fallback (works for Qwen2/3 family)
         lines: List[str] = []
@@ -5023,7 +5033,7 @@ if __name__ == "__main__":
     parser.add_argument("--output-dir", default="/kaggle/working/outputs/ms3")
     parser.add_argument("--limit",      type=int, default=None,
                         help="Smoke-test cap (e.g. --limit 5)")
-    parser.add_argument("--model",      default="unsloth/Qwen3-4B-bnb-4bit",
+    parser.add_argument("--model",      default="Qwen/Qwen3-4B-Instruct-2507",
                         help="BASE model only — do not point at a fine-tuned adapter (§2f)")
     parser.add_argument("--max-seq-len", type=int, default=8192,
                         help="Contract + retrieved precedents + system prompt routinely 5-7k tokens; "
