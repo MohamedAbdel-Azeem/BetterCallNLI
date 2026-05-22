@@ -1,0 +1,115 @@
+{
+  "contract_count": 123,
+  "hypothesis_count": 2091,
+  "label_accuracy": 0.6839,
+  "groundedness_rate": 0.9197,
+  "quote_integrity_rate": 0.8986,
+  "avg_latency_ms": 973971.99,
+  "label_counts": {
+    "NOT_MENTIONED": 1300,
+    "ENTAILED": 660,
+    "CONTRADICTED": 131
+  },
+  "confusion_counts": {
+    "NOT_MENTIONED|CONTRADICTED": 129,
+    "NOT_MENTIONED|NOT_MENTIONED": 788,
+    "ENTAILED|ENTAILED": 567,
+    "NOT_MENTIONED|ENTAILED": 383,
+    "CONTRADICTED|CONTRADICTED": 75,
+    "ENTAILED|NOT_MENTIONED": 77,
+    "CONTRADICTED|NOT_MENTIONED": 38,
+    "CONTRADICTED|ENTAILED": 18,
+    "ENTAILED|CONTRADICTED": 16
+  },
+  "per_hypothesis": {
+    "H01": {
+      "total": 123,
+      "correct": 62,
+      "accuracy": 0.5041
+    },
+    "H02": {
+      "total": 123,
+      "correct": 66,
+      "accuracy": 0.5366
+    },
+    "H03": {
+      "total": 123,
+      "correct": 92,
+      "accuracy": 0.748
+    },
+    "H04": {
+      "total": 123,
+      "correct": 93,
+      "accuracy": 0.7561
+    },
+    "H05": {
+      "total": 123,
+      "correct": 97,
+      "accuracy": 0.7886
+    },
+    "H06": {
+      "total": 123,
+      "correct": 57,
+      "accuracy": 0.4634
+    },
+    "H07": {
+      "total": 123,
+      "correct": 99,
+      "accuracy": 0.8049
+    },
+    "H08": {
+      "total": 123,
+      "correct": 89,
+      "accuracy": 0.7236
+    },
+    "H09": {
+      "total": 123,
+      "correct": 116,
+      "accuracy": 0.9431
+    },
+    "H10": {
+      "total": 123,
+      "correct": 94,
+      "accuracy": 0.7642
+    },
+    "H11": {
+      "total": 123,
+      "correct": 36,
+      "accuracy": 0.2927
+    },
+    "H12": {
+      "total": 123,
+      "correct": 79,
+      "accuracy": 0.6423
+    },
+    "H13": {
+      "total": 123,
+      "correct": 77,
+      "accuracy": 0.626
+    },
+    "H14": {
+      "total": 123,
+      "correct": 89,
+      "accuracy": 0.7236
+    },
+    "H15": {
+      "total": 123,
+      "correct": 109,
+      "accuracy": 0.8862
+    },
+    "H16": {
+      "total": 123,
+      "correct": 99,
+      "accuracy": 0.8049
+    },
+    "H17": {
+      "total": 123,
+      "correct": 76,
+      "accuracy": 0.6179
+    }
+  },
+  "skipped": [],
+  "shard_count": 5,
+  "duplicate_contracts": [],
+  "merged_at": "2026-05-22T20:19:52+00:00Z"
+}
