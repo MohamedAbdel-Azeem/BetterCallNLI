@@ -95,17 +95,21 @@ class GraphRAGRetriever(BaseRetriever):
         if not self._ready:
             return []
 
-        query_emb = self._get_embedder().encode([query])[0]
+        try:
+            query_emb = self._get_embedder().encode([query])[0]
 
-        if hypothesis_id:
-            h_id, confidence = hypothesis_id, 1.0
-        else:
-            h_id, confidence = self._find_nearest_hypothesis(query_emb)
+            if hypothesis_id:
+                h_id, confidence = hypothesis_id, 1.0
+            else:
+                h_id, confidence = self._find_nearest_hypothesis(query_emb)
 
-        if confidence >= _HYPOTHESIS_THRESHOLD and contract:
-            return self._pipeline_retrieve(contract, h_id, k)
+            if confidence >= _HYPOTHESIS_THRESHOLD and contract:
+                return self._pipeline_retrieve(contract, h_id, k)
 
-        return self._freeform_retrieve(query_emb.tolist(), k)
+            return self._freeform_retrieve(query_emb.tolist(), k)
+        except Exception as exc:
+            print(f"[GraphRAGRetriever] retrieve failed (Neo4j unavailable?): {exc}")
+            return []
 
     # ── private helpers ───────────────────────────────────────────────────────
 
