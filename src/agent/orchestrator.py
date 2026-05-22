@@ -76,8 +76,7 @@ class Orchestrator:
         self.model = model
 
         # ── sub-components ────────────────────────────────────────────────────
-        self.router = IntentRouter(hf_token=hf_token, model=model)
-
+        self.router = IntentRouter(hf_token=hf_token, model="Qwen/Qwen2.5-0.5B-Instruct")
         self.conv_agent = ConversationAgent(
             retriever=retriever,
             hf_token=hf_token,

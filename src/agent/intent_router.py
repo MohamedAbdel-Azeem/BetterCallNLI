@@ -29,7 +29,7 @@ from huggingface_hub import InferenceClient
 
 # ── constants ─────────────────────────────────────────────────────────────────
 
-DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+DEFAULT_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
 
 IntentType = Literal["conversation", "hypothesis_analysis"]
 
