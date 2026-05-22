@@ -305,20 +305,32 @@ def render_hypothesis_summary(
     table.add_column("Label", width=14)
     table.add_column("Conf", justify="right", width=6)
     table.add_column("Ev", justify="right", width=4)
-    table.add_column("Reasoning", overflow="fold")
+    table.add_column("Evidence", overflow="fold")
 
     for v in verdicts:
         label = (v.get("label") or "").upper()
         style = LABEL_COLOURS.get(label, BRAND_MUTED)
-        reasoning = v.get("reasoning", "") or ""
-        reasoning = (reasoning[:90] + "…") if len(reasoning) > 90 else reasoning
+
+        evidence_list = v.get("evidence") or []
+        if not evidence_list:
+            evidence_cell: Any = Text("—", style=BRAND_MUTED)
+        else:
+            lines = []
+            for i, ev in enumerate(evidence_list, 1):
+                quote = (ev.get("quote") or "").strip().replace("\n", " ")
+                if len(quote) > 160:
+                    quote = quote[:157] + "…"
+                rel = ev.get("relevance_score")
+                tag = f"[{i}]" if rel is None else f"[{i} · {float(rel):.2f}]"
+                lines.append(f"{tag} {quote}")
+            evidence_cell = "\n".join(lines)
 
         table.add_row(
             v.get("hypothesis_id", "?"),
             Text(label or "—", style=style),
             f"{float(v.get('confidence', 0.0)):.2f}",
-            str(len(v.get("evidence", []) or [])),
-            reasoning,
+            str(len(evidence_list)),
+            evidence_cell,
         )
 
     con.print()
