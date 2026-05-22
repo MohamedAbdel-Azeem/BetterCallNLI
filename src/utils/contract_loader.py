@@ -58,7 +58,7 @@ def get_contract_by_id(
 ) -> Optional[Dict[str, Any]]:
     """Return a single test contract by its string ID, or None if not found."""
     for c in get_test_contracts(local_path=local_path):
-        if c["id"] == contract_id:
+        if str(c["id"]) == str(contract_id):
             return c
     return None
 
