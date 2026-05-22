@@ -74,11 +74,20 @@ STRIP_PATTERNS = [
 ]
 
 
+_MAIN_BLOCK_RE = re.compile(r'^if\s+__name__\s*==\s*[\'"]__main__[\'"]\s*:')
+
+
 def _process_module(rel_path: str) -> str:
     """
     Read a source file and strip imports that don't apply in a flat bundle.
     Replaces stripped lines with `pass` instead of a comment so blocks like
     `if cond:\n    from src.x import Y` don't become empty after stripping.
+
+    Also strips top-level `if __name__ == "__main__":` blocks: each bundled
+    module may have its own CLI entrypoint, but only the bundle's footer
+    `__main__` should actually run. Without this, the first __main__ block
+    encountered exits before the Kaggle entrypoint (which writes the inlined
+    playbook) ever runs.
 
     Also handles multi-line imports: if a stripped line opens an unmatched
     parenthesis, continuation lines are consumed until the closing `)`.
@@ -89,6 +98,12 @@ def _process_module(rel_path: str) -> str:
     i = 0
     while i < len(lines):
         line = lines[i]
+        if _MAIN_BLOCK_RE.match(line):
+            # Consume this line plus all indented/blank lines underneath.
+            i += 1
+            while i < len(lines) and (lines[i].strip() == "" or lines[i][:1] in (" ", "\t")):
+                i += 1
+            continue
         if any(p.match(line) for p in STRIP_PATTERNS):
             indent = re.match(r"^(\s*)", line).group(1)
             out_lines.append(f"{indent}pass  # [bundled] {line.lstrip()}")
