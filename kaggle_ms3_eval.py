@@ -2845,6 +2845,7 @@ class HypothesisAnalyst:
             data = _extract_json(raw)
         except ValueError:
             print(f"  [{h_id}] PARSE ERROR — raw ({len(raw)} chars): {raw[:120]!r}", flush=True)
+            fallback["raw_failed_response"] = raw
             return fallback
 
         # Normalise and validate
@@ -3246,6 +3247,13 @@ class ReviewerAgent:
             evidence=evidence_text,
             reasoning=verdict.get("reasoning", ""),
         )
+        raw_failed = verdict.get("raw_failed_response", "")
+        if raw_failed:
+            user_content += (
+                f"\n\nNote: the analyst's response could not be parsed as valid JSON. "
+                f"The raw output is shown below for context — use it to infer intent "
+                f"and score accordingly.\n\nRaw analyst output:\n{raw_failed[:600]}"
+            )
         return [
             {"role": "system", "content": _REVIEWER_SYSTEM},
             {"role": "user",   "content": user_content},
@@ -3421,9 +3429,10 @@ class HypothesisPipeline:
         hf_token: str,
         playbook_path: str = "playbook.yaml",
         model: str = DEFAULT_MODEL,
+        reviewer_threshold: int = 5,
     ) -> None:
         self.analyst  = HypothesisAnalyst(retriever, hf_token, model=model)
-        self.reviewer = ReviewerAgent(model=model)
+        self.reviewer = ReviewerAgent(model=model, threshold=reviewer_threshold)
         self.playbook = _load_playbook(playbook_path)
 
     # ── public API ────────────────────────────────────────────────────────────
@@ -4970,10 +4979,11 @@ def _kaggle_main(args) -> int:
             raise RuntimeError("GraphRAGRetriever connect failed — check NEO4J_* secrets")
 
     pipeline = HypothesisPipeline(
-        retriever     = retriever,
-        hf_token      = os.environ["HF_TOKEN"],
-        playbook_path = str(playbook_path),
-        model         = args.model,
+        retriever           = retriever,
+        hf_token            = os.environ["HF_TOKEN"],
+        playbook_path       = str(playbook_path),
+        model               = args.model,
+        reviewer_threshold  = args.reviewer_threshold,
     )
     enricher  = PlaybookEnricher(str(playbook_path))
     formatter = RuntraceFormatter(playbook_path=str(playbook_path), model=args.model)
@@ -5044,5 +5054,8 @@ if __name__ == "__main__":
                         help="0-indexed shard for parallel runs across machines (default 0)")
     parser.add_argument("--shard-total", type=int, default=1,
                         help="Total number of shards; merge with scripts/merge_shards.py afterwards")
+    parser.add_argument("--reviewer-threshold", type=int, default=5,
+                        help="Minimum reviewer score (1-10) to accept an analyst verdict (default 5). "
+                             "Higher = stricter; 7 means only 'good' verdicts pass without retry.")
     args = parser.parse_args()
     raise SystemExit(_kaggle_main(args))
