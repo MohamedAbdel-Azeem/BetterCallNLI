@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import yaml
+from typing import Any, Dict, List, Optional
 
 from ..retrieval.base import BaseRetriever
 from .hypothesis_analyst import HypothesisAnalyst
@@ -62,25 +63,34 @@ class HypothesisPipeline:
 
     # ── public API ────────────────────────────────────────────────────────────
 
-    def run(self, contract: Dict[str, Any]) -> Dict[str, Any]:
+    def run(self, contract: Dict[str, Any], hypotheses: Optional[List] = None) -> Dict[str, Any]:
         """
-        Analyse a contract against all 17 playbook hypotheses.
+        Analyse a contract against playbook hypotheses.
 
         Args:
-            contract: dict with at minimum {"text": str, "id": str}.
+            contract:    dict with at minimum {"text": str, "id": str}.
+            hypotheses:  optional list of (id, title, text) tuples from the CLI
+                        picker. If None, all 17 hypotheses are run.
 
         Returns:
             {
-                "verdicts":     List[Dict]  — one verdict dict per hypothesis (H01–H17)
-                "agent_traces": List[Dict]  — one trace per hypothesis for runtrace
-                "tool_calls":   List[Dict]  — all tool calls across the full run
+                "verdicts":     List[Dict]
+                "agent_traces": List[Dict]
+                "tool_calls":   List[Dict]
             }
         """
-        verdicts:     List[Dict[str, Any]] = []
-        agent_traces: List[Dict[str, Any]] = []
+        verdicts:       List[Dict[str, Any]] = []
+        agent_traces:   List[Dict[str, Any]] = []
         all_tool_calls: List[Dict[str, Any]] = []
 
-        for check in self.playbook["checks"]:
+        checks = self.playbook["checks"]
+
+        # Filter to selected hypotheses if a subset was picked in the CLI
+        if hypotheses is not None:
+            selected_ids = {h[0] for h in hypotheses}
+            checks = [c for c in checks if c["hypothesis_id"] in selected_ids]
+
+        for check in checks:
             hyp = {
                 "id":    check["hypothesis_id"],
                 "text":  check["hypothesis_text"],

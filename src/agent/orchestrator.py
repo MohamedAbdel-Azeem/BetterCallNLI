@@ -42,6 +42,7 @@ from .conversation_agent import ConversationAgent
 from .history import ConversationHistory
 from .hypothesis_pipeline import HypothesisPipeline  # stub until Tasks 2+3
 from .intent_router import IntentRouter
+from typing import Any, Dict, List, Optional
 
 
 def _utc_now_iso() -> str:
@@ -109,6 +110,7 @@ class Orchestrator:
         contract: Dict[str, Any],
         user_message: str,
         history: ConversationHistory,
+        hypotheses: Optional[List] = None,
     ) -> Dict[str, Any]:
         """
         Process one user interaction.
@@ -152,7 +154,7 @@ class Orchestrator:
         if intent == "conversation":
             result = self._run_conversation(contract, user_message, history)
         else:
-            result = self._run_hypothesis_analysis(contract)
+            result = self._run_hypothesis_analysis(contract, hypotheses=hypotheses)
 
         # 3. Attach routing metadata to the result (existing behaviour)
         result["mode"] = intent
@@ -209,12 +211,13 @@ class Orchestrator:
     def _run_hypothesis_analysis(
         self,
         contract: Dict[str, Any],
+        hypotheses: Optional[List] = None,
     ) -> Dict[str, Any]:
         """
         Delegate to HypothesisPipeline.
         Currently raises NotImplementedError (stub) until Tasks 2 & 3 land.
         """
-        pipeline_result = self.hypothesis_pipeline.run(contract)
+        pipeline_result = self.hypothesis_pipeline.run(contract, hypotheses=hypotheses)
         pipeline_result["_agent_tool_calls"] = pipeline_result.pop("tool_calls", [])
         return pipeline_result
 

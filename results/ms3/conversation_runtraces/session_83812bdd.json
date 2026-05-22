@@ -1,0 +1,239 @@
+{
+  "schema_version": "1.0-ms3-draft",
+  "kind": "conversation_session",
+  "session_id": "83812bdd",
+  "contract_id": 1,
+  "retrieval_mode": "graphrag",
+  "generated_at": "2026-05-22T18:00:48+00:00Z",
+  "turn_count": 2,
+  "turns": [
+    {
+      "turn_id": 1,
+      "user_message": "@1 analyze",
+      "parsed_message": "analyze",
+      "intent": "hypothesis_analysis",
+      "contract_id": 1,
+      "response": "",
+      "evidence": [],
+      "precedents": [],
+      "verdicts": [
+        {
+          "hypothesis_id": "H01",
+          "label": "NOT_MENTIONED",
+          "confidence": 0.0,
+          "reasoning": "Parse error — could not extract valid JSON from model response.",
+          "evidence": [],
+          "counter_evidence": []
+        },
+        {
+          "hypothesis_id": "H02",
+          "label": "NOT_MENTIONED",
+          "confidence": 0.0,
+          "reasoning": "Parse error — could not extract valid JSON from model response.",
+          "evidence": [],
+          "counter_evidence": []
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "intent_router",
+          "args": {
+            "user_message": "analyze"
+          },
+          "output": {
+            "intent": "hypothesis_analysis",
+            "raw_response": "[keyword match — no LLM call]",
+            "fallback_used": false
+          },
+          "count": 1,
+          "latency_ms": 0.0
+        },
+        {
+          "name": "retrieve",
+          "args": {
+            "hypothesis_id": "H01",
+            "query": "All Confidential Information shall be expressly identified by the Disclosing Party."
+          },
+          "output": {
+            "count": 4,
+            "top_score": 0.912
+          },
+          "count": 4
+        },
+        {
+          "name": "hypothesis_analyst",
+          "args": {
+            "hypothesis_id": "H01",
+            "attempt": 1
+          },
+          "output": {
+            "label": "NOT_MENTIONED",
+            "confidence": 0.0,
+            "reasoning": "Parse error — could not extract valid JSON from model response.",
+            "evidence_count": 0,
+            "counter_evidence_count": 0,
+            "raw_response_len": 0
+          },
+          "count": 1,
+          "latency_ms": 29275.18
+        },
+        {
+          "name": "hypothesis_reviewer",
+          "args": {
+            "hypothesis_id": "H01",
+            "attempt": 1
+          },
+          "output": {
+            "score": 5,
+            "accepted": true,
+            "label_alignment": "debatable",
+            "evidence_quality": "weak",
+            "reasoning_coherence": "loose",
+            "rejection_reasons": [],
+            "critique": "Parse error — could not extract valid JSON from reviewer response."
+          },
+          "count": 1,
+          "latency_ms": 1944.38
+        },
+        {
+          "name": "retrieve",
+          "args": {
+            "hypothesis_id": "H02",
+            "query": "Confidential Information shall only include technical information."
+          },
+          "output": {
+            "count": 4,
+            "top_score": 0.9102
+          },
+          "count": 4
+        },
+        {
+          "name": "hypothesis_analyst",
+          "args": {
+            "hypothesis_id": "H02",
+            "attempt": 1
+          },
+          "output": {
+            "label": "NOT_MENTIONED",
+            "confidence": 0.0,
+            "reasoning": "Parse error — could not extract valid JSON from model response.",
+            "evidence_count": 0,
+            "counter_evidence_count": 0,
+            "raw_response_len": 0
+          },
+          "count": 1,
+          "latency_ms": 6106.79
+        },
+        {
+          "name": "hypothesis_reviewer",
+          "args": {
+            "hypothesis_id": "H02",
+            "attempt": 1
+          },
+          "output": {
+            "score": 5,
+            "accepted": true,
+            "label_alignment": "debatable",
+            "evidence_quality": "weak",
+            "reasoning_coherence": "loose",
+            "rejection_reasons": [],
+            "critique": "Parse error — could not extract valid JSON from reviewer response."
+          },
+          "count": 1,
+          "latency_ms": 210.24
+        }
+      ],
+      "retrieval_mode": "graphrag",
+      "hypotheses_selected": [
+        "H01",
+        "H02"
+      ]
+    },
+    {
+      "turn_id": 2,
+      "user_message": "@1 analyze",
+      "parsed_message": "analyze",
+      "intent": "hypothesis_analysis",
+      "contract_id": 1,
+      "response": "",
+      "evidence": [],
+      "precedents": [],
+      "verdicts": [
+        {
+          "hypothesis_id": "H01",
+          "label": "NOT_MENTIONED",
+          "confidence": 0.0,
+          "reasoning": "Parse error — could not extract valid JSON from model response.",
+          "evidence": [],
+          "counter_evidence": []
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "intent_router",
+          "args": {
+            "user_message": "analyze"
+          },
+          "output": {
+            "intent": "hypothesis_analysis",
+            "raw_response": "[keyword match — no LLM call]",
+            "fallback_used": false
+          },
+          "count": 1,
+          "latency_ms": 0.0
+        },
+        {
+          "name": "retrieve",
+          "args": {
+            "hypothesis_id": "H01",
+            "query": "All Confidential Information shall be expressly identified by the Disclosing Party."
+          },
+          "output": {
+            "count": 4,
+            "top_score": 0.912
+          },
+          "count": 4
+        },
+        {
+          "name": "hypothesis_analyst",
+          "args": {
+            "hypothesis_id": "H01",
+            "attempt": 1
+          },
+          "output": {
+            "label": "NOT_MENTIONED",
+            "confidence": 0.0,
+            "reasoning": "Parse error — could not extract valid JSON from model response.",
+            "evidence_count": 0,
+            "counter_evidence_count": 0,
+            "raw_response_len": 0
+          },
+          "count": 1,
+          "latency_ms": 7429.87
+        },
+        {
+          "name": "hypothesis_reviewer",
+          "args": {
+            "hypothesis_id": "H01",
+            "attempt": 1
+          },
+          "output": {
+            "score": 5,
+            "accepted": true,
+            "label_alignment": "debatable",
+            "evidence_quality": "weak",
+            "reasoning_coherence": "loose",
+            "rejection_reasons": [],
+            "critique": "Parse error — could not extract valid JSON from reviewer response."
+          },
+          "count": 1,
+          "latency_ms": 296.02
+        }
+      ],
+      "retrieval_mode": "graphrag",
+      "hypotheses_selected": [
+        "H01"
+      ]
+    }
+  ]
+}

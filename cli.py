@@ -18,12 +18,12 @@ Usage
 
     # Inside the interactive session:
     #   @path/to/contract.txt what are the confidentiality obligations?
-    #   @nda-001 analyze
+    #   @1 analyze             ← loads contract ID 1, shows hypothesis picker
     #   what does clause 4 mean?          ← reuses last loaded contract
-    #   analyze                            ← router picks hypothesis mode
-    #   show cards                         ← toggles verdict cards on/off
+    #   analyze                            ← router picks hypothesis mode, picker shown
+    #   cards on / cards off               ← toggle verdict card rendering
 
-    # Non-interactive one-shot analysis
+    # Non-interactive one-shot analysis (always runs all 17)
     python cli.py --mode analyze --contract path/to/contract.txt --retrieval graphrag
 
     # Batch evaluation
@@ -96,6 +96,45 @@ from src.utils.contract_loader import (
 
 VERSION = "0.3.0"
 
+# ── ContractNLI hypotheses (from playbook.yaml) ───────────────────────────────
+# Each entry: (hypothesis_id, title, hypothesis_text)
+_HYPOTHESES: List[Tuple[str, str, str]] = [
+    ("H01", "Explicit identification",
+     "All Confidential Information shall be expressly identified by the Disclosing Party."),
+    ("H02", "Technical-only scope",
+     "Confidential Information shall only include technical information."),
+    ("H03", "Verbal information included",
+     "Confidential Information may include verbally conveyed information."),
+    ("H04", "Purpose limitation",
+     "Receiving Party shall not use any Confidential Information for any purpose other than the purposes stated in Agreement."),
+    ("H05", "Disclosure to employees",
+     "Receiving Party may share some Confidential Information with some of Receiving Party's employees."),
+    ("H06", "Disclosure to third parties / representatives",
+     "Receiving Party may share some Confidential Information with some third-parties (including consultants, agents and professional advisors)."),
+    ("H07", "Notice for compelled disclosure",
+     "Receiving Party shall notify Disclosing Party in case Receiving Party is required by law, regulation or judicial process to disclose any Confidential Information."),
+    ("H08", "Confidentiality of the agreement/existence",
+     "Receiving Party shall not disclose the fact that Agreement was agreed or negotiated."),
+    ("H09", "No reverse engineering",
+     "Receiving Party shall not reverse engineer any objects which embody Disclosing Party's Confidential Information."),
+    ("H10", "Independent development permitted",
+     "Receiving Party may independently develop information similar to Confidential Information."),
+    ("H11", "Third-party acquisition permitted",
+     "Receiving Party may acquire information similar to Confidential Information from a third party."),
+    ("H12", "No rights / no license",
+     "Agreement shall not grant Receiving Party any right to Confidential Information."),
+    ("H13", "Return or destruction on termination",
+     "Receiving Party shall destroy or return some Confidential Information upon the termination of Agreement."),
+    ("H14", "Copying permitted in some circumstances",
+     "Receiving Party may create a copy of some Confidential Information in some circumstances."),
+    ("H15", "Non-solicitation",
+     "Receiving Party shall not solicit some of Disclosing Party's representatives."),
+    ("H16", "Survival of obligations",
+     "Some obligations of Agreement may survive termination of Agreement."),
+    ("H17", "Retention after return/destruction",
+     "Receiving Party may retain some Confidential Information even after the return or destruction of Confidential Information."),
+]
+
 # ── internal commands available during interactive sessions ───────────────────
 _INTERNAL_CMDS = {
     "exit", "quit", "q",       # end session
@@ -109,8 +148,8 @@ _HELP_TEXT = """
 [bold]Interactive session commands[/bold]
 
   [bold cyan]@path/to/file.txt[/] [dim]text…[/]   load a contract from a file path
-  [bold cyan]@contract-id[/] [dim]text…[/]         load a contract by test-set ID
-  [bold cyan]analyze[/]                             run 17-hypothesis analysis (router may also detect this)
+  [bold cyan]@contract-id[/] [dim]text…[/]         load a contract by test-set ID (e.g. @1, @2)
+  [bold cyan]analyze[/]                             trigger hypothesis analysis with picker
   [bold cyan]cards on[/] / [bold cyan]cards off[/]            toggle full verdict card rendering
   [bold cyan]contract[/]                            show currently loaded contract info
   [bold cyan]reset[/]                               clear conversation history
@@ -118,7 +157,127 @@ _HELP_TEXT = """
 
 Any other input is sent to the agent. The IntentRouter decides whether it
 becomes a conversation turn or a hypothesis-analysis run automatically.
+When hypothesis_analysis is detected, a picker lets you choose which to run.
 """
+
+
+# ── hypothesis picker ─────────────────────────────────────────────────────────
+
+def _select_hypotheses() -> List[Tuple[str, str, str]]:
+    """
+    Interactive list picker for the 17 ContractNLI hypotheses.
+
+    Displays a numbered menu and lets the user pick a subset by number,
+    a range, or 'all'. Returns a list of (id, title, text) tuples for
+    the selected hypotheses.
+
+    The user can enter:
+        all          → all 17
+        1,3,5        → H01, H03, H05
+        1-5          → H01 through H05
+        1-3,7,10-12  → mixed ranges and singles
+    """
+    from rich.box import ROUNDED
+    from rich.panel import Panel
+    from rich.table import Table
+
+    con = get_console()
+
+    # Build display table
+    table = Table(
+        show_header=True,
+        header_style=BRAND_ACCENT,
+        box=ROUNDED,
+        border_style=BRAND_MUTED,
+        expand=False,
+    )
+    table.add_column("#",    justify="right", style=BRAND_MUTED, width=3)
+    table.add_column("ID",   style="bold",    width=4)
+    table.add_column("Title",                 width=36)
+    table.add_column("Hypothesis text",       overflow="fold")
+
+    for i, (h_id, title, text) in enumerate(_HYPOTHESES, 1):
+        table.add_row(str(i), h_id, title, text)
+
+    con.print()
+    con.print(Panel(
+        table,
+        title=f"[{BRAND_PRIMARY}]Select hypotheses to analyze[/]",
+        title_align="left",
+        border_style=BRAND_PRIMARY,
+        box=ROUNDED,
+        padding=(0, 1),
+    ))
+    con.print(
+        f"[{BRAND_MUTED}]Enter numbers, ranges, or 'all'  "
+        f"(e.g. [bold]all[/bold]  ·  [bold]1,3,5[/bold]  ·  [bold]1-5[/bold]  ·  [bold]1-3,7,10-12[/bold])[/]"
+    )
+
+    while True:
+        try:
+            raw = con.input(f"[{BRAND_PRIMARY}]Hypotheses ›[/] ").strip()
+        except (KeyboardInterrupt, EOFError):
+            con.print(f"\n[{BRAND_MUTED}]Selection cancelled — running all 17[/]")
+            return list(_HYPOTHESES)
+
+        if not raw:
+            continue
+
+        if raw.lower() == "all":
+            con.print(f"[{OK_STYLE}]✓[/] running all 17 hypotheses")
+            return list(_HYPOTHESES)
+
+        # Parse numbers and ranges
+        selected_indices: List[int] = []
+        valid = True
+        for part in raw.split(","):
+            part = part.strip()
+            if "-" in part:
+                bounds = part.split("-", 1)
+                if len(bounds) == 2 and bounds[0].isdigit() and bounds[1].isdigit():
+                    lo, hi = int(bounds[0]), int(bounds[1])
+                    if 1 <= lo <= hi <= 17:
+                        selected_indices.extend(range(lo, hi + 1))
+                    else:
+                        con.print(f"[{ERR_STYLE}]✗[/] range '{part}' out of bounds (1–17)")
+                        valid = False
+                        break
+                else:
+                    con.print(f"[{ERR_STYLE}]✗[/] invalid range '{part}'")
+                    valid = False
+                    break
+            elif part.isdigit():
+                n = int(part)
+                if 1 <= n <= 17:
+                    selected_indices.append(n)
+                else:
+                    con.print(f"[{ERR_STYLE}]✗[/] '{part}' out of bounds (1–17)")
+                    valid = False
+                    break
+            else:
+                con.print(f"[{ERR_STYLE}]✗[/] unrecognised token '{part}' — use numbers, ranges, or 'all'")
+                valid = False
+                break
+
+        if not valid:
+            continue
+
+        # Deduplicate and preserve order
+        seen = set()
+        unique = []
+        for idx in selected_indices:
+            if idx not in seen:
+                seen.add(idx)
+                unique.append(idx)
+
+        if not unique:
+            con.print(f"[{WARN_STYLE}]![/] no valid selections — try again")
+            continue
+
+        chosen = [_HYPOTHESES[i - 1] for i in unique]
+        ids = ", ".join(h[0] for h in chosen)
+        con.print(f"[{OK_STYLE}]✓[/] selected {len(chosen)} hypothes{'is' if len(chosen)==1 else 'es'}: [bold]{ids}[/bold]")
+        return chosen
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -134,7 +293,7 @@ def _load_contract_from_ref(ref: str, data_dir: Optional[str]) -> Optional[Dict[
         text = p.read_text(encoding="utf-8", errors="ignore")
         return contract_from_text(text, contract_id=p.stem)
 
-    # Try test-set ID lookup
+    # Try test-set ID lookup — coerce to string so numeric IDs (int in dataset) match
     try:
         contract = get_contract_by_id(ref, local_path=data_dir)
     except Exception as exc:
@@ -144,7 +303,7 @@ def _load_contract_from_ref(ref: str, data_dir: Optional[str]) -> Optional[Dict[
     if contract is None:
         con.print(
             f"[{ERR_STYLE}]✗[/] '{ref}' is neither a valid file path nor a test-set contract ID. "
-            f"(Available numeric IDs: 1, 2, 4, 5, 6, 8, 11, 18, 21, 22, ...)"
+            f"(Available numeric IDs: 1, 2, 4, 5, 6, 8, 11, 18, 21, 22, …)"
         )
     return contract
 
@@ -175,7 +334,7 @@ def _parse_prompt(
     Supports:
         @path/to/file.txt some question
         some question @nda-001
-        @nda-001
+        @1
 
     Returns (contract_or_None, cleaned_message_without_@ref).
     If the @ref fails to resolve, returns (None, raw) so the caller can decide.
@@ -337,11 +496,13 @@ def run_interactive(args: argparse.Namespace) -> int:
     - Contract is set per-prompt using @path/to/file.txt or @contract-id syntax.
     - If --contract is supplied at launch it becomes the initial contract.
     - Intent is determined per-prompt by IntentRouter (via orchestrator.run()).
+    - When hypothesis_analysis intent is detected, _select_hypotheses() is called
+      so the user can pick a subset before the pipeline runs.
     - --mode converse at launch locks the session to conversation intent only
       (backwards-compatible with the old converse mode).
     """
     con = get_console()
-    locked_mode = args.mode  # None  →  router decides; "converse" → always conversation
+    locked_mode = args.mode  # None → router decides; "converse" → always conversation
 
     subtitle = (
         "NDA Review Agent · converse [dim](intent locked)[/dim]"
@@ -462,10 +623,23 @@ def run_interactive(args: argparse.Namespace) -> int:
         if not message:
             message = "analyze this contract"
 
-        # ── locked-mode override (--mode converse backwards compat) ───────────
-        # When locked_mode == "converse" we still call orchestrator.run() — the
-        # router will route it — but we ignore hypothesis results and re-prompt.
-        # This keeps the single orchestrator.run() call path while honouring the flag.
+        # ── pre-route intent check for hypothesis picker ──────────────────────
+        # We do a lightweight keyword check here (mirrors IntentRouter's own fast
+        # path) so we can show the picker BEFORE the expensive pipeline call.
+        # The orchestrator still calls the full router internally — this is only
+        # to decide whether to show the picker, not to bypass the router.
+        _hypothesis_triggers = {
+            "analyze", "analyse", "analysis", "full review", "run review",
+            "full analysis", "all hypotheses", "all hypothesis", "check hypotheses",
+            "hypothesis analysis", "17 hypotheses", "evaluate contract", "nli",
+            "contract review", "structured review", "run pipeline", "generate report",
+        }
+        looks_like_hypothesis = any(t in message.lower() for t in _hypothesis_triggers)
+
+        # Show picker only in unlocked mode (not when locked to "converse")
+        selected_hypotheses: Optional[List[Tuple[str, str, str]]] = None
+        if looks_like_hypothesis and locked_mode != "converse":
+            selected_hypotheses = _select_hypotheses()
 
         # ── dispatch ──────────────────────────────────────────────────────────
         try:
@@ -474,6 +648,9 @@ def run_interactive(args: argparse.Namespace) -> int:
                     contract=current_contract,
                     user_message=message,
                     history=history,
+                    # Pass selected hypotheses so the pipeline can filter.
+                    # Falls back to all 17 if None (orchestrator handles it).
+                    **({"hypotheses": selected_hypotheses} if selected_hypotheses is not None else {}),
                 )
         except NotImplementedError as exc:
             con.print(f"[{WARN_STYLE}]![/] {exc}")
@@ -509,6 +686,11 @@ def run_interactive(args: argparse.Namespace) -> int:
             enriched = result.get("enriched_verdicts")
             display_verdicts = enriched if enriched else verdicts
 
+            # Show which hypotheses were actually run
+            if selected_hypotheses is not None:
+                ids_run = ", ".join(h[0] for h in selected_hypotheses)
+                con.print(f"[{BRAND_MUTED}]→ hypotheses run:[/] [bold]{ids_run}[/]")
+
             render_hypothesis_summary(
                 display_verdicts,
                 title=f"Verdicts for {current_contract['id']}",
@@ -522,17 +704,23 @@ def run_interactive(args: argparse.Namespace) -> int:
 
         # ── accumulate turn for runtrace ──────────────────────────────────────
         session_turns.append({
-            "turn_id":        len(session_turns) + 1,
-            "user_message":   user_input,       # preserve original including @ref
-            "parsed_message": message,
-            "intent":         detected_mode,
-            "contract_id":    current_contract.get("id"),
-            "response":       result.get("response", ""),
-            "evidence":       result.get("evidence", []),
-            "precedents":     result.get("precedents", []),
-            "verdicts":       result.get("verdicts", []),
-            "tool_calls":     _normalize_tool_calls(result.get("tool_calls", [])),
-            "retrieval_mode": result.get("retrieval_mode", args.retrieval),
+            "turn_id":             len(session_turns) + 1,
+            "user_message":        user_input,
+            "parsed_message":      message,
+            "intent":              detected_mode,
+            "contract_id":         current_contract.get("id"),
+            "response":            result.get("response", ""),
+            "evidence":            result.get("evidence", []),
+            "precedents":          result.get("precedents", []),
+            "verdicts":            result.get("verdicts", []),
+            "tool_calls":          _normalize_tool_calls(result.get("tool_calls", [])),
+            "retrieval_mode":      result.get("retrieval_mode", args.retrieval),
+            # Record which hypotheses were selected (None = all 17 / conversation)
+            "hypotheses_selected": (
+                [h[0] for h in selected_hypotheses]
+                if selected_hypotheses is not None
+                else None
+            ),
         })
 
         if args.save_history:
@@ -557,7 +745,7 @@ def run_interactive(args: argparse.Namespace) -> int:
     return 0
 
 
-# ── mode: analyze (non-interactive one-shot) ──────────────────────────────────
+# ── mode: analyze (non-interactive one-shot, always all 17) ───────────────────
 
 def run_analyze(args: argparse.Namespace) -> int:
     con = get_console()
@@ -761,7 +949,9 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Claude Code-style CLI for the BetterCallNLI NDA review agent.\n\n"
             "Run without --mode (or with --mode converse) to start an interactive session\n"
-            "where contract and intent are set per-prompt via @ref syntax and IntentRouter."
+            "where contract and intent are set per-prompt via @ref syntax and IntentRouter.\n"
+            "When hypothesis_analysis intent is detected, a picker lets you choose which\n"
+            "hypotheses to run before the pipeline starts."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -787,7 +977,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Path to a .txt contract OR a test-set contract ID. "
             "Required for --mode analyze. Optional for interactive/converse — "
-            "can also be set per-prompt with @path/to/contract.txt."
+            "can also be set per-prompt with @path/to/contract.txt or @id."
         ),
     )
     p.add_argument(
