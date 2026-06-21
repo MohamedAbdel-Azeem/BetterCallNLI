@@ -1,0 +1,8 @@
+-r requirements_ms2.txt
+
+# MS3 additions
+rich>=13.7.0
+tqdm>=4.65.0
+pandas>=2.0.0
+pyyaml>=6.0
+

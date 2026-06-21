@@ -1,0 +1,619 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/contractnli-ms2-runtrace.schema.json",
+  "title": "ContractNLI MS2 RunTrace (Single-Model Baseline)",
+  "description": "Milestone 2 runtrace schema for a single-model QLoRA baseline. Keeps canonical decision/evidence/validation structures while removing MAS-only requirements.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run",
+    "contract",
+    "playbook",
+    "hypothesis_traces",
+    "metrics",
+    "run_validations"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0-ms1"]
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "started_at",
+        "ended_at",
+        "framework",
+        "parameters"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 8
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ended_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "framework": {
+          "type": "string",
+          "enum": ["single_model_pipeline"]
+        },
+        "deterministic": {
+          "type": "boolean"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "base_model",
+            "quantization",
+            "adapter_method",
+            "seed"
+          ],
+          "properties": {
+            "base_model": {
+              "type": "string"
+            },
+            "quantization": {
+              "type": "string",
+              "enum": ["4bit"]
+            },
+            "adapter_method": {
+              "type": "string",
+              "enum": ["lora", "qlora"]
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "learning_rate": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "batch_size": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "gradient_accumulation_steps": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_steps": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_seq_length": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "temperature": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_id",
+        "source_type",
+        "hash_sha256",
+        "chunks"
+      ],
+      "properties": {
+        "contract_id": {
+          "type": "string"
+        },
+        "source_type": {
+          "type": "string",
+          "enum": ["txt", "pdf", "docx", "unknown"]
+        },
+        "source_name": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string",
+          "default": "en"
+        },
+        "hash_sha256": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        },
+        "chunks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "chunk_id",
+              "text",
+              "span"
+            ],
+            "properties": {
+              "chunk_id": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "span": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "char_start",
+                  "char_end"
+                ],
+                "properties": {
+                  "char_start": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "char_end": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "section_path": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "playbook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "playbook_id",
+        "version",
+        "ruleset_hash"
+      ],
+      "properties": {
+        "playbook_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "ruleset_hash": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        },
+        "rule_params": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "hypothesis_traces": {
+      "type": "array",
+      "minItems": 17,
+      "maxItems": 17,
+      "items": {
+        "$ref": "#/$defs/HypothesisTrace"
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hypothesis_count",
+        "correct_count",
+        "compliant_count",
+        "quote_integrity_count",
+        "contract_accuracy",
+        "groundedness_rate",
+        "quote_integrity_rate",
+        "contract_latency_ms",
+        "label_counts"
+      ],
+      "properties": {
+        "hypothesis_count": {
+          "type": "integer",
+          "const": 17
+        },
+        "correct_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 17
+        },
+        "compliant_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 17
+        },
+        "quote_integrity_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 17
+        },
+        "contract_accuracy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "groundedness_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "quote_integrity_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "contract_latency_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "label_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ENTAILED",
+            "CONTRADICTED",
+            "NOT_MENTIONED"
+          ],
+          "properties": {
+            "ENTAILED": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 17
+            },
+            "CONTRADICTED": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 17
+            },
+            "NOT_MENTIONED": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 17
+            }
+          }
+        },
+        "confusion_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "run_validations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ValidationResult"
+      }
+    }
+  },
+  "$defs": {
+    "HypothesisTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hypothesis_id",
+        "hypothesis_text",
+        "gold_label",
+        "latency_ms",
+        "compliant_evidence_required",
+        "quote_integrity_pass",
+        "steps",
+        "decision",
+        "validations"
+      ],
+      "properties": {
+        "hypothesis_id": {
+          "type": "string",
+          "pattern": "^H(0[1-9]|1[0-7])$"
+        },
+        "dataset_hypothesis_key": {
+          "type": "string"
+        },
+        "hypothesis_text": {
+          "type": "string"
+        },
+        "gold_label": {
+          "type": "string",
+          "enum": ["ENTAILED", "CONTRADICTED", "NOT_MENTIONED"]
+        },
+        "latency_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "compliant_evidence_required": {
+          "type": "boolean"
+        },
+        "quote_integrity_pass": {
+          "type": "boolean"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/TraceStep"
+          }
+        },
+        "decision": {
+          "$ref": "#/$defs/Decision"
+        },
+        "validations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ValidationResult"
+          }
+        }
+      }
+    },
+    "TraceStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "step_type",
+        "producer",
+        "started_at",
+        "ended_at",
+        "inputs",
+        "outputs"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string"
+        },
+        "step_type": {
+          "type": "string",
+          "enum": [
+            "load_inputs",
+            "nli_infer",
+            "evidence_map",
+            "playbook_map",
+            "consistency_check",
+            "format_response"
+          ]
+        },
+        "producer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "component"
+          ],
+          "properties": {
+            "component": {
+              "type": "string",
+              "enum": ["pipeline", "model", "playbook", "validator"]
+            },
+            "component_id": {
+              "type": "string"
+            }
+          }
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ended_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "tool_calls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tool_name",
+              "tool_input",
+              "tool_output"
+            ],
+            "properties": {
+              "tool_name": {
+                "type": "string"
+              },
+              "tool_input": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "tool_output": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "Decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "confidence",
+        "evidence",
+        "justification",
+        "risk"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "enum": ["ENTAILED", "CONTRADICTED", "NOT_MENTIONED"]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "supporting",
+            "counter"
+          ],
+          "properties": {
+            "supporting": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/EvidenceItem"
+              }
+            },
+            "counter": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/EvidenceItem"
+              }
+            }
+          }
+        },
+        "justification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "claim",
+            "inference",
+            "limitations"
+          ],
+          "properties": {
+            "claim": {
+              "type": "string"
+            },
+            "inference": {
+              "type": "string"
+            },
+            "limitations": {
+              "type": "string"
+            }
+          }
+        },
+        "risk": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "severity",
+            "playbook_rule_ids",
+            "recommended_action"
+          ],
+          "properties": {
+            "severity": {
+              "type": "string",
+              "enum": ["LOW", "MEDIUM", "HIGH"]
+            },
+            "criticality": {
+              "type": "string",
+              "enum": ["P0", "P1", "P2"]
+            },
+            "playbook_rule_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "recommended_action": {
+              "type": "string",
+              "enum": ["ACCEPT", "CLARIFY", "NEGOTIATE", "ESCALATE"]
+            },
+            "negotiation_notes": {
+              "type": "string"
+            },
+            "suggested_redline": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "EvidenceItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chunk_id",
+        "quote",
+        "relevance_score"
+      ],
+      "properties": {
+        "chunk_id": {
+          "type": "string"
+        },
+        "quote": {
+          "type": "string"
+        },
+        "relevance_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "span": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "char_start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "char_end": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "ValidationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validator_id",
+        "status",
+        "message"
+      ],
+      "properties": {
+        "validator_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PASS", "FAIL", "WARN"]
+        },
+        "message": {
+          "type": "string"
+        },
+        "related_hypothesis_id": {
+          "type": "string"
+        },
+        "related_chunk_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
