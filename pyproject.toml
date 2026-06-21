@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bettercallnli"
+version = "0.3.0"
+description = "Agentic NDA contract analysis over ContractNLI (CSEN 1144 Generative & Agentic AI project)"
+readme = "README.md"
+requires-python = ">=3.10"
+
+# Runtime dependencies are managed via the milestone requirements files
+# (requirements_ms3.txt includes requirements_ms2.txt). Install with:
+#   pip install -r requirements_ms3.txt
+#   pip install -e .          # editable install of the bettercallnli package
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["bettercallnli*"]

@@ -34,43 +34,39 @@ from pathlib import Path
 from typing import List
 
 REPO_ROOT  = Path(__file__).resolve().parent.parent
-OUTPUT_FILE = REPO_ROOT / "kaggle_ms3_eval.py"
+OUTPUT_FILE = REPO_ROOT / "notebooks" / "ms3" / "kaggle_ms3_eval.py"
 
 # Source files in dependency order — the bundler concatenates them as listed.
 BUNDLE_FILES: List[str] = [
-    "src/retrieval/base.py",
-    "src/retrieval/vector_rag.py",
-    "scripts/graphrag_utils.py",        # peer module the retriever sys.path-hacks
-    "src/retrieval/graphrag_retriever.py",
-    "src/utils/contract_loader.py",
-    "src/utils/runtrace.py",
-    "src/enrichment/playbook_enricher.py",
-    "src/agent/history.py",
-    "src/agent/intent_router.py",
-    "src/agent/conversation_agent.py",
-    "src/agent/hypothesis_analyst.py",
-    "src/agent/reviewer_agent.py",
-    "src/agent/hypothesis_pipeline.py",
-    "src/agent/orchestrator.py",
-    "src/agent/local_inference_client.py",
+    "src/bettercallnli/retrieval/base.py",
+    "src/bettercallnli/retrieval/vector_rag.py",
+    "src/bettercallnli/retrieval/graphrag_utils.py",   # imported by graphrag_retriever
+    "src/bettercallnli/retrieval/graphrag_retriever.py",
+    "src/bettercallnli/utils/contract_loader.py",
+    "src/bettercallnli/utils/runtrace.py",
+    "src/bettercallnli/enrichment/playbook_enricher.py",
+    "src/bettercallnli/agent/history.py",
+    "src/bettercallnli/agent/intent_router.py",
+    "src/bettercallnli/agent/conversation_agent.py",
+    "src/bettercallnli/agent/hypothesis_analyst.py",
+    "src/bettercallnli/agent/reviewer_agent.py",
+    "src/bettercallnli/agent/hypothesis_pipeline.py",
+    "src/bettercallnli/agent/orchestrator.py",
+    "src/bettercallnli/agent/local_inference_client.py",
     "scripts/evaluate_ms3.py",
 ]
 
 # Regexes for lines that need to be removed/commented from each source file
 # because the symbols they reference are already defined elsewhere in the bundle.
 STRIP_PATTERNS = [
-    re.compile(r"^\s*from\s+\.\.?[\w\.]*\s+import\s+"),    # `from ..foo import` / `from .foo import`
-    re.compile(r"^\s*from\s+src\.[\w\.]+\s+import\s+"),    # `from src.foo import`
-    re.compile(r"^\s*import\s+src\.[\w\.]+"),              # `import src.foo`
+    re.compile(r"^\s*from\s+\.\.?[\w\.]*\s+import\s+"),         # `from ..foo import` / `from .foo import`
+    re.compile(r"^\s*from\s+src\.[\w\.]+\s+import\s+"),         # `from src.foo import` (legacy)
+    re.compile(r"^\s*import\s+src\.[\w\.]+"),                   # `import src.foo` (legacy)
+    re.compile(r"^\s*from\s+bettercallnli\.?[\w\.]*\s+import\s+"),  # `from bettercallnli.foo import`
+    re.compile(r"^\s*import\s+bettercallnli\b"),               # `import bettercallnli`
     re.compile(r"^\s*from\s+__future__\s+import\s+annotations"),  # only need one at the top
-    re.compile(r"^\s*from\s+graphrag_utils\s+import\s+"),  # graphrag_utils.py is bundled inline
+    re.compile(r"^\s*from\s+graphrag_utils\s+import\s+"),       # graphrag_utils.py is bundled inline
     re.compile(r"^\s*import\s+graphrag_utils"),
-    # NOTE: the `_SCRIPTS_DIR = ...`, `if _SCRIPTS_DIR not in sys.path:`, and
-    # `sys.path.insert(0, _SCRIPTS_DIR)` lines in src/retrieval/graphrag_retriever.py
-    # are intentionally LEFT IN the bundle. Stripping the inner sys.path.insert
-    # line while keeping the `if` indented becomes a syntax error; letting all
-    # three lines stay is a harmless no-op (it adds a non-existent path to
-    # sys.path, which Python silently tolerates).
 ]
 
 

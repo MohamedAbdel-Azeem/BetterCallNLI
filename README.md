@@ -9,25 +9,37 @@ Inference: https://www.kaggle.com/code/harridy/notebook8c78216aee
 ```
 BetterCallNLI/
 ├── README.md                  # Project overview and run instructions
-├── CONTRIBUTION.md            # Group member contributions
-├── notebooks/                 # Model/training/inference notebooks (annotated)
-├── src/                       # Modular source code
-├── playbooks/                 # Playbook files used in evaluation
-├── results/                   # Final evaluation CSV and RunTrace files
-├── data/                      # Datasets or instructions to obtain them
-└── requirements.txt           # Python dependencies
+├── pyproject.toml             # Package metadata (pip install -e .)
+├── playbook.yaml              # Deterministic playbook (MS1, reused unedited in MS3)
+├── requirements_ms2.txt       # MS2 dependencies
+├── requirements_ms3.txt       # MS3 dependencies (includes MS2)
+├── src/bettercallnli/         # Importable package — the multi-agent system
+│   ├── agent/                 # orchestrator, router, analyst, reviewer, conversation, history
+│   ├── retrieval/             # base, vector_rag, graphrag_retriever, graphrag_utils
+│   ├── enrichment/            # playbook_enricher (deterministic policy layer)
+│   ├── ui/                    # Rich console rendering
+│   └── utils/                 # contract_loader, runtrace formatter
+├── apps/                      # User entry points (cli.py, streamlit_app.py)
+├── scripts/                   # Dev/ops tooling (evaluation, bundler, merge, diagram)
+├── notebooks/                 # Milestone notebooks, grouped ms1/ ms2/ ms3/
+├── configs/                   # Non-playbook configs (playbook_ms2.json, nda_pipeline.*)
+├── schemas/                   # RunTrace JSON schemas (ms2, ms3)
+├── data/                      # ContractNLI splits (dev.json, test.json, contract.txt)
+├── docs/                      # Run instructions, contributions, course spec
+├── deliverables/              # Submitted report PDF + architecture diagrams
+└── results/                   # Generated outputs & model weights (ms1/, ms3/, models/)
 ```
 
 ## Deliverables
 
 | # | Deliverable | Location |
 |---|-------------|----------|
-| a | Model/training/inference code | `notebooks/`, `src/` |
-| b | Reproducible run instructions | Annotations within notebooks |
+| a | Model/training/inference code | `notebooks/`, `src/bettercallnli/` |
+| b | Reproducible run instructions | `docs/RUN_INSTRUCTIONS.md`, `docs/RUN_INSTRUCTIONS_MS3.md` |
 | c | Final evaluation CSV and model weights | `results/` |
 | d | RunTrace file (with base-model info) | `results/` |
-| e | Playbook file used in evaluation | `playbooks/` |
-| f | Contribution file | `CONTRIBUTION.md` |
+| e | Playbook file used in evaluation | `playbook.yaml` |
+| f | Contribution file | `docs/CONTRIBUTION.md` |
 
 ## Milestone 1: Baseline Model
 

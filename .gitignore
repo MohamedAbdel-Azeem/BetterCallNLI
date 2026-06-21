@@ -1,7 +1,22 @@
+# ── secrets & local env ──────────────────────────────────────────────────────
 .env
 .claude
-dev.json
 .venv
+venv/
+
+# ── python bytecode / caches ─────────────────────────────────────────────────
 **/__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+
+# ── packaging build artifacts ────────────────────────────────────────────────
+build/
+dist/
+*.egg-info/
+
+# ── scratch / planning notes ─────────────────────────────────────────────────
 milestone3_plan.md
-test.json
+
+# NOTE: ContractNLI splits (data/dev.json, data/test.json) and run outputs
+# under results/ are intentionally tracked via Git LFS — see .gitattributes.

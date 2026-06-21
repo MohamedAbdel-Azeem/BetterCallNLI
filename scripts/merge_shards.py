@@ -49,7 +49,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+for _p in (_REPO_ROOT / "src", _REPO_ROOT):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 from scripts.evaluate_ms3 import (  # noqa: E402
     aggregate_metrics,

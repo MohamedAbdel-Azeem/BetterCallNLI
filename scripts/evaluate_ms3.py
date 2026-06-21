@@ -37,6 +37,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
+# Make the package (src/) and repo root importable so the soft imports below and
+# the sibling-script imports resolve whether this file is run as
+# `python scripts/evaluate_ms3.py`, `python -m scripts.evaluate_ms3`, or imported
+# by apps/cli.py. (Harmless no-op inside the flattened Kaggle bundle.)
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+for _p in (_REPO_ROOT / "src", _REPO_ROOT):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
 # ── Task 4 modules: prefer them when available, fall back to local shims ─────
 # These are owned by Member 4 (playbook enrichment + schema-compliant runtrace
 # formatter). When their PR merges into this branch the imports succeed and the
@@ -44,14 +53,14 @@ import yaml
 # local apply_playbook() / write_runtrace() defined below are used.
 
 try:
-    from src.enrichment.playbook_enricher import PlaybookEnricher  # type: ignore
+    from bettercallnli.enrichment.playbook_enricher import PlaybookEnricher  # type: ignore
     _HAS_TASK4_ENRICHER = True
 except Exception:
     PlaybookEnricher = None  # type: ignore[assignment]
     _HAS_TASK4_ENRICHER = False
 
 try:
-    from src.utils.runtrace import RuntraceFormatter  # type: ignore
+    from bettercallnli.utils.runtrace import RuntraceFormatter  # type: ignore
     _HAS_TASK4_FORMATTER = True
 except Exception:
     RuntraceFormatter = None  # type: ignore[assignment]
@@ -534,7 +543,7 @@ def run_evaluation(
 
     # Lazy import — ConversationHistory only needed when going through orchestrator.run
     if has_task4_via_orchestrator:
-        from src.agent.history import ConversationHistory  # type: ignore
+        from bettercallnli.agent.history import ConversationHistory  # type: ignore
 
     for i, contract in enumerate(selected, 1):
         c_id = contract.get("id", f"contract-{i}")
@@ -710,11 +719,15 @@ def _main() -> int:
 
     load_dotenv()
 
-    # add project root to sys.path so `src.*` imports work when run as a script
-    sys.path.insert(0, str(Path(__file__).parent.parent))
+    # add src/ and project root to sys.path so package + sibling-script
+    # imports work when run as a standalone script
+    _repo_root = Path(__file__).resolve().parent.parent
+    for _p in (_repo_root / "src", _repo_root):
+        if str(_p) not in sys.path:
+            sys.path.insert(0, str(_p))
 
-    from src.agent.orchestrator import build_orchestrator
-    from src.utils.contract_loader import get_test_contracts
+    from bettercallnli.agent.orchestrator import build_orchestrator
+    from bettercallnli.utils.contract_loader import get_test_contracts
 
     parser = argparse.ArgumentParser(prog="evaluate_ms3")
     parser.add_argument("--data-dir",   default=None, help="Local ContractNLI directory (defaults to kagglehub)")
@@ -722,7 +735,7 @@ def _main() -> int:
     parser.add_argument("--output-dir", default="results/ms3")
     parser.add_argument("--limit",      type=int, default=None, help="Process only first N contracts (smoke test)")
     parser.add_argument("--playbook",   default="playbook.yaml", help="Playbook YAML for §3c deterministic policy mapping")
-    parser.add_argument("--ms1-csv",    default="results/evaluation_metrics.csv", help="Existing MS1 CSV to include in the combined CSV (§5b)")
+    parser.add_argument("--ms1-csv",    default="results/ms1/evaluation_metrics.csv", help="Existing MS1 CSV to include in the combined CSV (§5b)")
     parser.add_argument("--shard-index", type=int, default=0,
                         help="0-indexed shard for parallel runs (default 0)")
     parser.add_argument("--shard-total", type=int, default=1,
